@@ -15,12 +15,10 @@
         <StackPanel Grid.Row="0">
             <TextBlock Text="Optimize textures in this project" FontSize="17" FontWeight="SemiBold"
                        Foreground="{DynamicResource Brush900}" />
-            <TextBlock Text="Includes regular and embedded textures. The optimized files are generated during Build."
-                       TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource Brush700}" />
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,18,0,0">
-            <CheckBox x:Name="DownscaleCheckBox" Content="Downscale textures over 2048 to a maximum of 2048"
+            <CheckBox x:Name="DownscaleCheckBox" Content="Downscale textures over 2048 and 2048×2048 images"
                       IsChecked="True" Margin="0,0,0,10" />
             <CheckBox x:Name="CompressionCheckBox" Content="Change compression to DXT5"
                       Margin="0,0,0,10" />
@@ -43,10 +41,6 @@
                     <ComboBoxItem Content="12" />
                 </ComboBox>
             </StackPanel>
-            <TextBlock Text="Downscale affects only textures with a width or height over 2048. Compression and mipmaps apply to all textures when selected."
-                       TextWrapping="Wrap" Foreground="{DynamicResource Brush700}" />
-            <TextBlock Text="A chosen mipmap count is capped to the maximum supported by each texture size."
-                       TextWrapping="Wrap" Margin="0,5,0,0" Foreground="{DynamicResource Brush700}" />
         </StackPanel>
 
         <Grid Grid.Row="2">

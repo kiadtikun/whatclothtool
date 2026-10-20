@@ -335,6 +335,21 @@ public class GTexture : INotifyPropertyChanged
         IsLoading = false;
     }
 
+    public void UseOptimizedFile(string relativePath, GTextureDetails details)
+    {
+        FilePath = relativePath;
+        Extension = Path.GetExtension(relativePath);
+        TxtDetails = details;
+        OptimizeDetails = null;
+        IsOptimizedDuringBuild = false;
+        ImageThumbnail = null;
+        OnPropertyChanged(nameof(FilePath));
+        OnPropertyChanged(nameof(Extension));
+        OnPropertyChanged(nameof(FullFilePath));
+        OnPropertyChanged(nameof(TxtDetails));
+        OnPropertyChanged(nameof(CanEditYtdTextureName));
+    }
+
     public async Task RenameYtdTextureAsync(string newName)
     {
         var normalizedName = await YtdTextureNameHelper.RenameFirstTextureAsync(FullFilePath, newName);

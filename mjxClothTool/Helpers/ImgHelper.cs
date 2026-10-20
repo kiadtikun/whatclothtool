@@ -63,7 +63,8 @@ public static class ImgHelper
         return (width, height);
     }
 
-    public static async Task<byte[]?> Optimize(GTexture gtxt, bool shouldSkipOptimization = false)
+    public static async Task<byte[]?> Optimize(GTexture gtxt, bool shouldSkipOptimization = false,
+        GTextureDetails? optimizationDetails = null)
     {
         try
         {
@@ -83,11 +84,11 @@ public static class ImgHelper
             // Skip optimization (I think this is best way to not duplicate code, and reuse this for jpg/png textures that don't need optimization)
             if (!shouldSkipOptimization)
             {
-                var details = gtxt.OptimizeDetails;
+                var details = optimizationDetails ?? gtxt.OptimizeDetails;
                 ResizeExact(img, details.Width, details.Height, details.Compression);
                 img.Settings.SetDefine(MagickFormat.Dds, "compression", GetCompressionString(details.Compression));
                 img.Settings.SetDefine(MagickFormat.Dds, "cluster-fit", true);
-                img.Settings.SetDefine(MagickFormat.Dds, "mipmaps", details.MipMapCount);
+                img.Settings.SetDefine(MagickFormat.Dds, "mipmaps", GetAdditionalMipMapCount(details.MipMapCount));
             }
 
             var stream = new MemoryStream();
@@ -118,7 +119,7 @@ public static class ImgHelper
             ResizeExact(img, optimizeDetails.Width, optimizeDetails.Height, optimizeDetails.Compression);
             img.Settings.SetDefine(MagickFormat.Dds, "compression", GetCompressionString(optimizeDetails.Compression));
             img.Settings.SetDefine(MagickFormat.Dds, "cluster-fit", true);
-            img.Settings.SetDefine(MagickFormat.Dds, "mipmaps", optimizeDetails.MipMapCount);
+            img.Settings.SetDefine(MagickFormat.Dds, "mipmaps", GetAdditionalMipMapCount(optimizeDetails.MipMapCount));
 
             var stream = new MemoryStream();
             img.Write(stream);
@@ -207,6 +208,9 @@ public static class ImgHelper
             _ => "dxt5",
         };
     }
+
+    // ImageMagick counts levels after the base image; the UI and CodeWalker include it.
+    private static int GetAdditionalMipMapCount(int totalLevels) => Math.Max(0, totalLevels - 1);
 
     private static bool IsBlockCompressed(string cwCompression) => cwCompression switch
     {
