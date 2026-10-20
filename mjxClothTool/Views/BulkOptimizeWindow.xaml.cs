@@ -14,7 +14,6 @@ namespace mjxClothTool.Views;
 
 public partial class BulkOptimizeWindow : Window
 {
-    private const int MaxTextureDimension = 2048;
     private bool _isApplying;
 
     public BulkOptimizeWindow()
@@ -68,7 +67,7 @@ public partial class BulkOptimizeWindow : Window
             foreach (var texture in textures)
             {
                 StatusText.Text = $"Optimizing {processed + 1}/{total} — {texture.DisplayName}";
-                if (TryCreateDetails(texture.TxtDetails, downscale, changeCompression, mipmapChoice, out var details))
+                if (BulkTextureOptimizationHelper.TryCreateDetails(texture.TxtDetails, downscale, changeCompression, mipmapChoice, out var details))
                 {
                     try
                     {
@@ -99,7 +98,7 @@ public partial class BulkOptimizeWindow : Window
             foreach (var texture in embedded)
             {
                 StatusText.Text = $"Optimizing {processed + 1}/{total} — {texture.Details?.Name}";
-                if (TryCreateDetails(texture.Details, downscale, changeCompression, mipmapChoice, out var details))
+                if (BulkTextureOptimizationHelper.TryCreateDetails(texture.Details, downscale, changeCompression, mipmapChoice, out var details))
                 {
                     try
                     {
@@ -153,64 +152,6 @@ public partial class BulkOptimizeWindow : Window
             CompressionCheckBox.IsEnabled = true;
             MipmapComboBox.IsEnabled = true;
         }
-    }
-
-    private static bool TryCreateDetails(GTextureDetails source, bool downscale, bool changeCompression,
-        string mipmapChoice,
-        out GTextureDetails result)
-    {
-        result = null;
-        if (source == null || source.Width <= 0 || source.Height <= 0) return false;
-
-        var is2048Square = source.Width == MaxTextureDimension && source.Height == MaxTextureDimension;
-        var needsDownscale = downscale &&
-            (source.Width > MaxTextureDimension || source.Height > MaxTextureDimension || is2048Square);
-        if (!needsDownscale && !changeCompression && mipmapChoice == "Keep original") return false;
-
-        var (width, height) = ImgHelper.CheckPowerOfTwo(source.Width, source.Height);
-        if (needsDownscale)
-        {
-            var newWidth = width;
-            var newHeight = height;
-            while (newWidth > MaxTextureDimension || newHeight > MaxTextureDimension)
-            {
-                newWidth /= 2;
-                newHeight /= 2;
-            }
-            if (is2048Square)
-            {
-                newWidth /= 2;
-                newHeight /= 2;
-            }
-            if (newWidth >= 4 && newHeight >= 4)
-            {
-                width = newWidth;
-                height = newHeight;
-            }
-            else if (!changeCompression && mipmapChoice == "Keep original") return false;
-        }
-
-        var maximumMipmaps = Math.Max(1, ImgHelper.GetCorrectMipMapAmount(width, height));
-        var mipmapCount = mipmapChoice switch
-        {
-            "Keep original" when width == source.Width && height == source.Height => source.MipMapCount,
-            "Keep original" => Math.Min(Math.Max(1, source.MipMapCount), maximumMipmaps),
-            "Auto" => maximumMipmaps,
-            _ => Math.Min(int.Parse(mipmapChoice), maximumMipmaps)
-        };
-
-        result = new GTextureDetails
-        {
-            Name = source.Name,
-            Width = width,
-            Height = height,
-            Compression = !changeCompression && source.Compression is
-                "D3DFMT_DXT1" or "D3DFMT_DXT3" or "D3DFMT_DXT5" or "D3DFMT_A8R8G8B8"
-                ? source.Compression : "D3DFMT_DXT5",
-            MipMapCount = mipmapCount,
-            IsOptimizeNeeded = false
-        };
-        return true;
     }
 
     private void Close_Click(object sender, RoutedEventArgs e) => Close();
