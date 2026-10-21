@@ -2,6 +2,7 @@ using CodeWalker.GameFiles;
 using mjxClothTool.Controls;
 using mjxClothTool.Helpers;
 using mjxClothTool.Models.Texture;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -35,6 +36,43 @@ namespace mjxClothTool.Views
 
         public string[] AvailableTextureSizes { get; set; }
 
+        private string[] _availableMipmapAmounts = [];
+        public string[] AvailableMipmapAmounts
+        {
+            get => _availableMipmapAmounts;
+            private set
+            {
+                _availableMipmapAmounts = value;
+                OnPropertyChanged();
+            }
+        }
+
+        private string _selectedMipmapAmount = "1";
+        public string SelectedMipmapAmount
+        {
+            get => _selectedMipmapAmount;
+            set
+            {
+                if (string.IsNullOrEmpty(value))
+                    return;
+                _selectedMipmapAmount = value;
+                OnPropertyChanged();
+                ReloadOutputTexture();
+            }
+        }
+
+        private bool _isMipmapEnabled = true;
+        public bool IsMipmapEnabled
+        {
+            get => _isMipmapEnabled;
+            set
+            {
+                _isMipmapEnabled = value;
+                OnPropertyChanged();
+                ReloadOutputTexture();
+            }
+        }
+
         private string _selectedTextureSize;
         public string SelectedTextureSize
         {
@@ -56,26 +94,8 @@ namespace mjxClothTool.Views
                 if (_isTextureDownsizeEnabled != value)
                 {
                     _isTextureDownsizeEnabled = value;
-
-                    if (value && SelectedTextureSize != null)
-                    {
-                        var size = SelectedTextureSize.Split('x');
-                        var width = int.Parse(size[0]);
-                        var height = int.Parse(size[1]);
-                        OutputTextureDetails.Width = width;
-                        OutputTextureDetails.Height = height;
-                        OutputTextureDetails.MipMapCount = ImgHelper.GetCorrectMipMapAmount(width, height);
-                    }
-
-                    if (!value)
-                    {
-                        OutputTextureDetails.Width = TextureDetails.Width;
-                        OutputTextureDetails.Height = TextureDetails.Height;
-                        OutputTextureDetails.MipMapCount = TextureDetails.MipMapCount;
-                    }
-
                     OnPropertyChanged(nameof(IsTextureDownsizeEnabled));
-                    OnPropertyChanged(nameof(OutputTextureDetails));
+                    ReloadOutputTexture();
                 }
             }
         }
@@ -142,11 +162,12 @@ namespace mjxClothTool.Views
 
             OutputTextureDetails = new GTextureDetails
             {
-                MipMapCount = ImgHelper.GetCorrectMipMapAmount(TextureDetails.Width, TextureDetails.Height),
+                MipMapCount = 1,
                 Compression = TextureDetails.Compression,
                 Width = TextureDetails.Width,
                 Height = TextureDetails.Height
             };
+            UpdateAvailableMipmapAmounts(OutputTextureDetails.Width, OutputTextureDetails.Height);
 
             var sizes = new List<string>();
             for (int i = 2; i < 6; i += 2)
@@ -221,7 +242,7 @@ namespace mjxClothTool.Views
 
         private void OptimizeTexture_Click(object sender, RoutedEventArgs e)
         {
-            if (!IsTextureDownsizeEnabled && !IsTextureCompressionEnabled)
+            if (!IsTextureDownsizeEnabled && !IsTextureCompressionEnabled && !IsMipmapEnabled)
             {
                 Close();
                 CustomMessageBox.Show("No optimization options selected");
@@ -232,6 +253,10 @@ namespace mjxClothTool.Views
 
             foreach (var txt in GTextures)
             {
+                var mipmapCount = IsMipmapEnabled && SelectedMipmapAmount == "Keep original"
+                    ? Math.Clamp(GetTextureDetails(txt).MipMapCount, 1, Math.Max(1,
+                        ImgHelper.GetCorrectMipMapAmount(OutputTextureDetails.Width, OutputTextureDetails.Height)))
+                    : OutputTextureDetails.MipMapCount;
                 // We don't want to create it at the time of clicking this button, this should be saved and generated only during build
                 txt.IsOptimizedDuringBuild = true;
                 txt.OptimizeDetails = new GTextureDetails
@@ -239,7 +264,7 @@ namespace mjxClothTool.Views
                     Width = OutputTextureDetails.Width,
                     Height = OutputTextureDetails.Height,
                     Compression = OutputTextureDetails.Compression,
-                    MipMapCount = OutputTextureDetails.MipMapCount,
+                    MipMapCount = mipmapCount,
                     IsOptimizeNeeded = false
                 };
             } 
@@ -255,6 +280,11 @@ namespace mjxClothTool.Views
 
         private void ReloadOutputTexture()
         {
+            if (OutputTextureDetails == null || TextureDetails == null)
+                return;
+
+            OutputTextureDetails.Width = TextureDetails.Width;
+            OutputTextureDetails.Height = TextureDetails.Height;
             if (IsTextureDownsizeEnabled && SelectedTextureSize != null)
             {
                 var size = SelectedTextureSize.Split('x');
@@ -263,16 +293,39 @@ namespace mjxClothTool.Views
 
                 OutputTextureDetails.Width = width;
                 OutputTextureDetails.Height = height;
-
-                OutputTextureDetails.MipMapCount = ImgHelper.GetCorrectMipMapAmount(width, height);
             }
 
-            if (IsTextureCompressionEnabled)
-            {
+            UpdateAvailableMipmapAmounts(OutputTextureDetails.Width, OutputTextureDetails.Height);
+            var autoMipmapCount = Math.Max(1, ImgHelper.GetCorrectMipMapAmount(OutputTextureDetails.Width, OutputTextureDetails.Height));
+            OutputTextureDetails.MipMapCount = IsMipmapEnabled && SelectedMipmapAmount == "Keep original"
+                ? Math.Clamp(TextureDetails.MipMapCount, 1, autoMipmapCount)
+                : IsMipmapEnabled && int.TryParse(SelectedMipmapAmount, out var selectedMipmapCount)
+                    ? selectedMipmapCount
+                    : autoMipmapCount;
+
+            OutputTextureDetails.Compression = TextureDetails.Compression;
+            if (IsTextureCompressionEnabled && _textureFormat.HasValue)
                 OutputTextureDetails.Compression = SelectedCompression;
+
+            OnPropertyChanged(nameof(OutputTextureDetails));
+        }
+
+        private void UpdateAvailableMipmapAmounts(int width, int height)
+        {
+            var maximum = Math.Max(1, ImgHelper.GetCorrectMipMapAmount(width, height));
+            if (AvailableMipmapAmounts.Length != maximum + 2)
+            {
+                var amounts = new List<string> { "Auto", "Keep original" };
+                for (var count = 1; count <= maximum; count++)
+                    amounts.Add(count.ToString());
+                AvailableMipmapAmounts = [.. amounts];
             }
 
-            OnPropertyChanged("OutputTextureDetails");
+            if (int.TryParse(SelectedMipmapAmount, out var selected) && selected > maximum)
+            {
+                _selectedMipmapAmount = "Auto";
+                OnPropertyChanged(nameof(SelectedMipmapAmount));
+            }
         }
 
         protected void OnPropertyChanged([CallerMemberName] string name = null)

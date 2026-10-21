@@ -141,6 +141,16 @@
                     ItemsSource="{Binding AvailableCompression}"
                     SelectedItem="{Binding SelectedCompression}"
                     />
+                <c:ModernLabelCheckBox
+                    IsChecked="{Binding IsMipmapEnabled}"
+                    Label="Change mipmap amount"
+                    />
+                <c:ModernLabelComboBox
+                    IsEnabled="{Binding IsMipmapEnabled}"
+                    Label="Select mipmap amount"
+                    ItemsSource="{Binding AvailableMipmapAmounts}"
+                    SelectedItem="{Binding SelectedMipmapAmount}"
+                    />
             </StackPanel>
 
             <StackPanel Grid.Row="2" HorizontalAlignment="Center" Orientation="Horizontal">
