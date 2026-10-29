@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'">
+  <title>mjxClothTool</title>
+  <link rel="stylesheet" href="styles.css">
+  <script defer src="renderer.js"></script>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">M</span><span>mjxClothTool</span></div>
+    <button id="openProject" class="primary-button" type="button">Open project</button>
+    <span id="version" class="version"></span>
+  </header>
+  <main class="workspace">
+    <aside class="sidebar" aria-label="Project navigation">
+      <div class="section-title">PROJECT</div>
+      <h1 id="projectName">No project open</h1>
+      <div class="section-title add-ons-title">ADD-ONS</div>
+      <nav id="addonList" aria-label="Add-ons"></nav>
+      <div class="section-title drawables-title">DRAWABLES</div>
+      <div id="drawableList" class="drawable-list" aria-label="Drawables"></div>
+    </aside>
+    <section class="details" aria-label="Drawable details">
+      <div class="detail-heading"><div><div class="eyebrow">DRAWABLE</div><h2 id="selectedName">Select a drawable</h2><p id="selectedMeta">Choose an item from the list</p></div></div>
+      <div class="texture-panel"><div class="texture-heading"><h3>Textures</h3><span>Original file names</span></div><div id="textureList" class="texture-list"></div></div>
+    </section>
+  </main>
+  <footer class="statusbar"><span id="status">Open a project to begin</span><span>Read-only preview</span></footer>
+</body>
+</html>
