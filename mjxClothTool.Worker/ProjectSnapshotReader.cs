@@ -27,7 +27,7 @@ public static class ProjectSnapshotReader
                 ReadArray(root, "Tags", value => value.GetString() ?? string.Empty),
                 addons);
         }
-        catch (JsonException ex)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException or OverflowException)
         {
             throw new InvalidDataException("Project save contains invalid JSON or an invalid field type.", ex);
         }

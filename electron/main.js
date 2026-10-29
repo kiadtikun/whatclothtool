@@ -40,7 +40,10 @@ app.whenReady().then(() => {
     return worker.openProject(savePath);
   });
   createWindow();
-}).catch(error => dialog.showErrorBox('mjxClothTool', error.message));
+}).catch(error => {
+  dialog.showErrorBox('mjxClothTool', error.message);
+  app.quit();
+});
 
 app.on('before-quit', () => worker?.close());
 app.on('window-all-closed', () => app.quit());

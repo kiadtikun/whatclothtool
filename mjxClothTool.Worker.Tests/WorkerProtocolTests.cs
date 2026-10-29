@@ -51,6 +51,20 @@ public sealed class WorkerProtocolTests
         Assert.Equal("Fixture", responses[2].GetProperty("result").GetProperty("projectName").GetString());
     }
 
+    [Theory]
+    [InlineData("""{"ProjectName":42,"Addons":[]}""")]
+    [InlineData("""{"ProjectName":"Bad","IsExternalProject":"yes","Addons":[]}""")]
+    [InlineData("""{"ProjectName":"Bad","Addons":[{"Name":"One","Drawables":[{"Number":"7"}]}]}""")]
+    [InlineData("""{"ProjectName":"Bad","Addons":[{"Name":"One","Drawables":[{"Number":2147483648}]}]}""")]
+    public async Task Wrong_scalar_type_returns_error_and_allows_next_request(string badJson)
+    {
+        using var bad = new SaveFixture(badJson);
+        using var valid = new SaveFixture();
+        var responses = await ExchangeAsync(Request("bad", bad.Path), Request("good", valid.Path));
+        Assert.Equal("project_error", responses[0].GetProperty("error").GetProperty("code").GetString());
+        Assert.Equal("Fixture", responses[1].GetProperty("result").GetProperty("projectName").GetString());
+    }
+
     [Fact]
     public async Task Two_requests_receive_two_responses_in_order()
     {
@@ -76,11 +90,11 @@ public sealed class WorkerProtocolTests
     {
         private readonly string _directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "mjx-worker-protocol-" + Guid.NewGuid().ToString("N"));
         public string Path { get; }
-        public SaveFixture()
+        public SaveFixture(string json = """{"ProjectName":"Fixture","Addons":[]}""")
         {
             Directory.CreateDirectory(_directory);
             Path = System.IO.Path.Combine(_directory, "autosave.json");
-            File.WriteAllText(Path, """{"ProjectName":"Fixture","Addons":[]}""");
+            File.WriteAllText(Path, json);
         }
         public void Dispose() => Directory.Delete(_directory, true);
     }
