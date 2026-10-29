@@ -52,7 +52,10 @@ public class GTextureDetails
         }
 
         var expectedMipMapCount = ImgHelper.GetCorrectMipMapAmount(Width, Height);
-        if (MipMapCount == 1 && MipMapCount != expectedMipMapCount)
+        bool isSmallDxt5Texture = Width > 0 && Height > 0 && Width < 2048 && Height < 2048 &&
+            (string.Equals(Compression, "D3DFMT_DXT5", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(Compression, "DXT5", StringComparison.OrdinalIgnoreCase));
+        if (MipMapCount == 1 && MipMapCount != expectedMipMapCount && !isSmallDxt5Texture)
         {
             IsOptimizeNeeded = true;
             IsOptimizeNeededTooltip += $"Texture has {MipMapCount} mip maps but should have {expectedMipMapCount}. Optimize it to generate the correct amount.\n";

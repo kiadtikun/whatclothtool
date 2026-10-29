@@ -623,13 +623,13 @@ namespace mjxClothTool.Views
                     var files = (string[])e.Data.GetData(WpfDataFormats.FileDrop);
                     var yddFiles = files.Where(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase)).ToArray();
                     
-                    e.Effects = yddFiles.Length > 0 ? WpfDragDropEffects.Copy : WpfDragDropEffects.None;
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, yddFiles.Length > 0);
                 }
                 else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
                 {
                     var filter = DragDropHelper.CreateExtensionFilter(".ydd");
                     var hasYddFiles = DragDropHelper.CheckForFilesInDescriptor(e.Data, filter);
-                    e.Effects = hasYddFiles ? WpfDragDropEffects.Copy : WpfDragDropEffects.None;
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, hasYddFiles);
                 }
                 else
                 {
@@ -652,13 +652,14 @@ namespace mjxClothTool.Views
                 if (e.Data.GetDataPresent(WpfDataFormats.FileDrop))
                 {
                     var files = (string[])e.Data.GetData(WpfDataFormats.FileDrop);
-                    e.Effects = files.Any(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase)) 
-                        ? WpfDragDropEffects.Copy 
-                        : WpfDragDropEffects.None;
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
+                        files.Any(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase)));
                 }
                 else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
                 {
-                    e.Effects = WpfDragDropEffects.Copy;
+                    var filter = DragDropHelper.CreateExtensionFilter(".ydd");
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
+                        DragDropHelper.CheckForFilesInDescriptor(e.Data, filter));
                 }
                 else
                 {
@@ -681,8 +682,32 @@ namespace mjxClothTool.Views
 
         private async void DrawablesGroupBox_Drop(object sender, System.Windows.DragEventArgs e)
         {
+            // Set the result before awaiting extraction/import so Ctrl-drag from an archive
+            // is reported to the source as Copy, never Move.
+            e.Handled = true;
+            e.Effects = WpfDragDropEffects.None;
             try
             {
+                bool hasSupportedFiles;
+                if (e.Data.GetDataPresent(WpfDataFormats.FileDrop))
+                {
+                    var droppedFiles = (string[])e.Data.GetData(WpfDataFormats.FileDrop);
+                    hasSupportedFiles = droppedFiles.Any(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase));
+                }
+                else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
+                {
+                    var filter = DragDropHelper.CreateExtensionFilter(".ydd");
+                    hasSupportedFiles = DragDropHelper.CheckForFilesInDescriptor(e.Data, filter);
+                }
+                else
+                {
+                    return;
+                }
+
+                e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, hasSupportedFiles);
+                if (e.Effects != WpfDragDropEffects.Copy)
+                    return;
+
                 List<string> filesToProcess = [];
                 
                 if (e.Data.GetDataPresent(WpfDataFormats.FileDrop))

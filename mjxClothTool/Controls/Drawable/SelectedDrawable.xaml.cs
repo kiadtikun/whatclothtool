@@ -783,24 +783,65 @@ namespace mjxClothTool.Controls
 
         #region Drag and Drop for Textures
 
+        private ListBoxItem _textureReplaceDropTarget;
+
+        private void SetTextureReplaceDropTarget(ListBox listBox, DragEventArgs e, bool canReplace)
+        {
+            if (listBox == null)
+            {
+                ClearTextureReplaceDropTarget();
+                return;
+            }
+
+            ListBoxItem target = null;
+            if (canReplace && e.OriginalSource is DependencyObject source)
+            {
+                var hoveredItem = FindAncestor<ListBoxItem>(source);
+                if (hoveredItem != null && listBox.ItemContainerGenerator.ItemFromContainer(hoveredItem) is GTexture)
+                    target = hoveredItem;
+            }
+
+            if (ReferenceEquals(_textureReplaceDropTarget, target))
+                return;
+
+            ClearTextureReplaceDropTarget();
+            _textureReplaceDropTarget = target;
+            if (target != null)
+                target.Tag = "ReplaceDropTarget";
+        }
+
+        private void ClearTextureReplaceDropTarget()
+        {
+            if (_textureReplaceDropTarget != null)
+                _textureReplaceDropTarget.Tag = null;
+            _textureReplaceDropTarget = null;
+        }
+
+        private void TextureListBox_DragLeave(object sender, DragEventArgs e)
+        {
+            ClearTextureReplaceDropTarget();
+        }
+
         private void TextureListBox_DragEnter(object sender, DragEventArgs e)
         {
             try
             {
                 if (e.Data.GetDataPresent(typeof(GTexture)))
                 {
+                    ClearTextureReplaceDropTarget();
                     e.Effects = DragDropEffects.Move;
                 }
                 else if (e.Data.GetDataPresent(DataFormats.FileDrop))
                 {
                     var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                    e.Effects = files.Any(f => IsValidTextureFile(f)) ? DragDropEffects.Copy : DragDropEffects.None;
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
+                        files.Any(IsValidTextureFile));
                 }
                 else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
                 {
                     var filter = DragDropHelper.CreateExtensionFilter(".ytd", ".jpg", ".png", ".dds");
                     var hasTextureFiles = DragDropHelper.CheckForFilesInDescriptor(e.Data, filter);
-                    e.Effects = hasTextureFiles ? DragDropEffects.Copy : DragDropEffects.None;
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, hasTextureFiles);
                 }
                 else
                 {
@@ -841,19 +882,30 @@ namespace mjxClothTool.Controls
                 else if (e.Data.GetDataPresent(DataFormats.FileDrop))
                 {
                     var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                    e.Effects = files.Any(f => IsValidTextureFile(f)) ? DragDropEffects.Copy : DragDropEffects.None;
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
+                        files.Any(IsValidTextureFile));
+                    SetTextureReplaceDropTarget(sender as ListBox, e,
+                        e.Effects == DragDropEffects.Copy && files.Length == 1 && IsValidTextureFile(files[0]) &&
+                        (e.KeyStates & DragDropKeyStates.ControlKey) != 0);
                 }
                 else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
                 {
-                    e.Effects = DragDropEffects.Copy;
+                    var filter = DragDropHelper.CreateExtensionFilter(".ytd", ".jpg", ".png", ".dds");
+                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
+                        DragDropHelper.CheckForFilesInDescriptor(e.Data, filter));
+                    SetTextureReplaceDropTarget(sender as ListBox, e,
+                        e.Effects == DragDropEffects.Copy && (e.KeyStates & DragDropKeyStates.ControlKey) != 0 &&
+                        DragDropHelper.HasSingleFileInDescriptor(e.Data, filter));
                 }
                 else
                 {
+                    ClearTextureReplaceDropTarget();
                     e.Effects = DragDropEffects.None;
                 }
             }
             catch (Exception ex)
             {
+                ClearTextureReplaceDropTarget();
                 LogHelper.Log($"Error: {ex.Message}", LogType.Error);
                 e.Effects = DragDropEffects.None;
             }
@@ -863,15 +915,23 @@ namespace mjxClothTool.Controls
 
         private async void TextureListBox_Drop(object sender, DragEventArgs e)
         {
+            // The drag source receives this result as soon as an async handler yields. In
+            // particular, Ctrl must never let an external source interpret the drop as Move.
+            e.Handled = true;
+            e.Effects = DragDropEffects.None;
             try
             {
                 if (SelectedDraw == null)
                 {
+                    ClearTextureReplaceDropTarget();
                     return;
                 }
 
+                ClearTextureReplaceDropTarget();
+
                 if (e.Data.GetDataPresent(typeof(GTexture)))
                 {
+                    e.Effects = DragDropEffects.Move;
                     if (e.Data.GetData(typeof(GTexture)) is GTexture droppedTexture && SelectedDraw.Textures.Contains(droppedTexture))
                     {
                         GTexture target = null;
@@ -931,6 +991,36 @@ namespace mjxClothTool.Controls
                     return;
                 }
 
+                bool hasSupportedExternalFiles;
+                if (e.Data.GetDataPresent(DataFormats.FileDrop))
+                {
+                    var droppedFiles = (string[])e.Data.GetData(DataFormats.FileDrop);
+                    hasSupportedExternalFiles = droppedFiles.Any(IsValidTextureFile);
+                }
+                else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
+                {
+                    var filter = DragDropHelper.CreateExtensionFilter(".ytd", ".jpg", ".png", ".dds");
+                    hasSupportedExternalFiles = DragDropHelper.CheckForFilesInDescriptor(e.Data, filter);
+                }
+                else
+                {
+                    return;
+                }
+
+                e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, hasSupportedExternalFiles);
+                if (e.Effects != DragDropEffects.Copy)
+                    return;
+
+                // Capture the hovered row before extracting virtual files awaits; selection may
+                // still point at a different texture when the external drop completes.
+                GTexture hoveredTexture = null;
+                if (sender is ListBox textureList && e.OriginalSource is DependencyObject dropSource)
+                {
+                    var hoveredItem = FindAncestor<ListBoxItem>(dropSource);
+                    if (hoveredItem != null)
+                        hoveredTexture = textureList.ItemContainerGenerator.ItemFromContainer(hoveredItem) as GTexture;
+                }
+
                 List<string> filesToProcess = [];
                 if (e.Data.GetDataPresent(DataFormats.FileDrop))
                 {
@@ -980,6 +1070,15 @@ namespace mjxClothTool.Controls
 
                 if (accessibleFiles.Count == 0)
                 {
+                    e.Handled = true;
+                    return;
+                }
+
+                if ((e.KeyStates & DragDropKeyStates.ControlKey) != 0 &&
+                    filesToProcess.Count == 1 && accessibleFiles.Count == 1 &&
+                    hoveredTexture != null && SelectedDraw.Textures.Contains(hoveredTexture))
+                {
+                    await ReplaceTextureAsync(hoveredTexture, accessibleFiles[0], e);
                     e.Handled = true;
                     return;
                 }
@@ -1204,13 +1303,9 @@ namespace mjxClothTool.Controls
 
         private async void ReplaceTexture_Click(object sender, RoutedEventArgs e)
         {
-
-            if (SelectedTextures == null || SelectedTextures.Count > 1) // TODO support multiple textures
-            {
+            var selectedTexture = (sender as MenuItem)?.DataContext as GTexture;
+            if (selectedTexture == null)
                 return;
-            }
-
-            GTexture selectedTexture = SelectedTextures[0];
 
             OpenFileDialog file = new()
             {
@@ -1223,26 +1318,34 @@ namespace mjxClothTool.Controls
                 return;
             }
 
+            await ReplaceTextureAsync(selectedTexture, file.FileName, e);
+        }
+
+        private async Task ReplaceTextureAsync(GTexture selectedTexture, string filePath, RoutedEventArgs e)
+        {
             try
             {
-                // Copy new texture file to project assets with the texture's existing GUID
-                var newRelativePath = await FileHelper.CopyToProjectAssetsAsync(file.FileName, selectedTexture.Id.ToString());
-                
-                // create new texture with relative path
-                var newTexture = new GTexture(selectedTexture.Id, newRelativePath, SelectedDraw.TypeNumeric, SelectedDraw.Number, selectedTexture.TxtNumber, SelectedDraw.HasSkin, SelectedDraw.IsProp) { OriginalFileName = Path.GetFileName(file.FileName) };
-                int index = SelectedDraw.Textures.IndexOf(selectedTexture);
+                var drawable = SelectedDraw;
+                if (drawable == null || !drawable.Textures.Contains(selectedTexture))
+                    return;
 
-                MainWindow.AddonManager.SelectedAddon.SelectedDrawable.Textures[index] = newTexture;
-                MainWindow.AddonManager.SelectedAddon.SelectedTexture = newTexture;
+                // Give each replacement its own asset so the previous texture remains available for Undo.
+                var newRelativePath = await FileHelper.CopyToProjectAssetsAsync(filePath, Guid.NewGuid().ToString());
+                var index = drawable.Textures.IndexOf(selectedTexture);
+                if (index < 0)
+                    return;
 
-                SelectedTxt = newTexture;
-                SelectedTextures = new List<GTexture>([newTexture]);
-
-                var textureListBox = FindTextureListBox(this);
-                textureListBox.SelectedItem = newTexture;
+                var newTexture = new GTexture(selectedTexture.Id, newRelativePath, drawable.TypeNumeric,
+                    drawable.Number, selectedTexture.TxtNumber, drawable.HasSkin, drawable.IsProp)
+                {
+                    OriginalFileName = Path.GetFileName(filePath),
+                    PreviousReplacement = selectedTexture
+                };
+                drawable.Textures[index] = newTexture;
+                newTexture.LoadThumbnailAsync();
+                SelectTextureAfterReplacement(drawable, newTexture, e);
 
                 SaveHelper.SetUnsavedChanges(true);
-                CWHelper.SendDrawableUpdateToPreview(e);
                 LogHelper.Log($"Replaced texture '{selectedTexture.DisplayName}' with new file", Views.LogType.Info);
             }
             catch (Exception ex)
@@ -1250,6 +1353,57 @@ namespace mjxClothTool.Controls
                 LogHelper.Log($"Failed to replace texture: {ex.Message}", Views.LogType.Error);
                 Show($"Failed to replace texture: {ex.Message}", "Error", CustomMessageBoxButtons.OKOnly, CustomMessageBoxIcon.Error);
             }
+        }
+
+        private void UndoReplaceTexture_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as MenuItem)?.DataContext is not GTexture currentTexture ||
+                currentTexture.PreviousReplacement is not GTexture previousTexture)
+                return;
+
+            var drawable = SelectedDraw;
+            if (drawable == null)
+                return;
+
+            var index = drawable.Textures.IndexOf(currentTexture);
+            if (index < 0)
+                return;
+
+            if (!File.Exists(previousTexture.FullFilePath))
+            {
+                Show("The original texture file is missing, so this replacement cannot be undone.",
+                    "Undo replace", CustomMessageBoxButtons.OKOnly, CustomMessageBoxIcon.Error);
+                return;
+            }
+
+            previousTexture.TypeNumeric = currentTexture.TypeNumeric;
+            previousTexture.IsProp = currentTexture.IsProp;
+            previousTexture.HasSkin = currentTexture.HasSkin;
+            previousTexture.Number = currentTexture.Number;
+            previousTexture.TxtNumber = currentTexture.TxtNumber;
+            drawable.Textures[index] = previousTexture;
+            SelectTextureAfterReplacement(drawable, previousTexture, e);
+            SaveHelper.SetUnsavedChanges(true);
+            LogHelper.Log($"Restored texture '{previousTexture.DisplayName}' before replacement", LogType.Info);
+        }
+
+        private void SelectTextureAfterReplacement(GDrawable drawable, GTexture texture, RoutedEventArgs e)
+        {
+            if (!ReferenceEquals(SelectedDraw, drawable))
+                return;
+
+            MainWindow.AddonManager.SelectedAddon.SelectedTexture = texture;
+            SelectedTxt = texture;
+            SelectedTextures = new List<GTexture>([texture]);
+
+            var textureListBox = FindTextureListBox(this);
+            if (textureListBox != null)
+            {
+                textureListBox.SelectedItem = texture;
+                textureListBox.ScrollIntoView(texture);
+            }
+
+            CWHelper.SendDrawableUpdateToPreview(e);
         }
 
         private void AllowOverride_Click(object sender, RoutedEventArgs e)

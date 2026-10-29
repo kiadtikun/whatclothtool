@@ -56,6 +56,46 @@ public class GTextureDetailsTests
     }
 
     [Theory]
+    [InlineData("D3DFMT_DXT5", 1024, 1024)]
+    [InlineData("DXT5", 512, 1024)]
+    public void Validate_DoesNotWarnForSmallDxt5TextureWithOneMipMap(string compression, int width, int height)
+    {
+        var details = new GTextureDetails
+        {
+            Width = width,
+            Height = height,
+            MipMapCount = 1,
+            Compression = compression,
+            Type = "diffuse"
+        };
+
+        details.Validate();
+
+        Assert.False(details.IsOptimizeNeeded);
+        Assert.Equal(string.Empty, details.IsOptimizeNeededTooltip);
+    }
+
+    [Theory]
+    [InlineData("D3DFMT_DXT5", 2048, 1024)]
+    [InlineData("D3DFMT_DXT1", 1024, 1024)]
+    public void Validate_StillWarnsForSingleMipMapOutsideSmallDxt5Case(string compression, int width, int height)
+    {
+        var details = new GTextureDetails
+        {
+            Width = width,
+            Height = height,
+            MipMapCount = 1,
+            Compression = compression,
+            Type = "diffuse"
+        };
+
+        details.Validate();
+
+        Assert.True(details.IsOptimizeNeeded);
+        Assert.Contains("mip maps", details.IsOptimizeNeededTooltip);
+    }
+
+    [Theory]
     [InlineData("diffuse", 4096, 2048)]
     [InlineData("normal", 4096, 2048)]
     [InlineData("specular", 4096, 2048)]

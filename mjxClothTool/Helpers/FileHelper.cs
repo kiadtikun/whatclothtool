@@ -201,12 +201,21 @@ public static class FileHelper
         var fileName = $"{fileNameWithoutExtension}{extension}";
         var destinationPath = Path.Combine(assetsPath, fileName);
 
-        if (File.Exists(destinationPath))
-        {
-            File.Delete(destinationPath);
-        }
+        if (string.Equals(Path.GetFullPath(sourceFilePath), Path.GetFullPath(destinationPath), StringComparison.OrdinalIgnoreCase))
+            return fileName;
 
-        await CopyAsync(sourceFilePath, destinationPath);
+        // Keep the existing asset intact if copying fails, then swap the completed file into place.
+        var temporaryPath = Path.Combine(assetsPath, $".{Guid.NewGuid():N}.tmp");
+        try
+        {
+            await CopyAsync(sourceFilePath, temporaryPath);
+            File.Move(temporaryPath, destinationPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+                File.Delete(temporaryPath);
+        }
 
         return fileName;
     }

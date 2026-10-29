@@ -35,6 +35,31 @@ public class GTextureTests
     }
 
     [Fact]
+    public void ReplacementHistory_SurvivesSaveAndReload()
+    {
+        var original = CreateTexture(Guid.NewGuid(), 11, 0, 0, false, false);
+        original.OriginalFileName = "original.ytd";
+        var firstReplacement = CreateTexture(original.Id, 11, 0, 0, false, false);
+        firstReplacement.PreviousReplacement = original;
+        var latestReplacement = CreateTexture(original.Id, 11, 0, 0, false, false);
+        latestReplacement.PreviousReplacement = firstReplacement;
+
+        Assert.True(latestReplacement.CanUndoReplacement);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(latestReplacement);
+        Assert.Contains("PreviousReplacement", json);
+        Assert.DoesNotContain("CanUndoReplacement", json);
+
+        var loaded = System.Text.Json.JsonSerializer.Deserialize<GTexture>(json)!;
+        Assert.True(loaded.CanUndoReplacement);
+        Assert.Equal(firstReplacement.FilePath, loaded.PreviousReplacement!.FilePath);
+        Assert.True(loaded.PreviousReplacement.CanUndoReplacement);
+        Assert.Equal(original.FilePath, loaded.PreviousReplacement.PreviousReplacement!.FilePath);
+        Assert.Equal(original.OriginalFileName, loaded.PreviousReplacement.PreviousReplacement.OriginalFileName);
+        Assert.Null(loaded.PreviousReplacement.PreviousReplacement.PreviousReplacement);
+    }
+
+    [Fact]
     public void Constructor_AssignsIdWhenEmptyGuidProvided()
     {
         var texture = CreateTexture(Guid.Empty, typeNumeric: 11, number: 0, txtNumber: 0, hasSkin: false, isProp: false);

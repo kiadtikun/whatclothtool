@@ -33,6 +33,13 @@ public class GTexture : INotifyPropertyChanged
     public string FilePath { get; set; }
     public string Extension { get; set; }
 
+    // Keep prior texture versions so Undo replace still works after reopening the project.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GTexture? PreviousReplacement { get; set; }
+
+    [JsonIgnore]
+    public bool CanUndoReplacement => PreviousReplacement != null;
+
     private string? _originalFileName;
     public string? OriginalFileName
     {

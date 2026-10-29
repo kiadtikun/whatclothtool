@@ -14,6 +14,11 @@ namespace mjxClothTool.Helpers;
 /// </summary>
 public static class DragDropHelper
 {
+    public static DragDropEffects GetExternalFileEffect(DragDropEffects allowedEffects, bool hasSupportedFiles)
+        => hasSupportedFiles && (allowedEffects & DragDropEffects.Copy) != 0
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+
     /// <summary>
     /// Extracts virtual files from IDataObject
     /// </summary>
@@ -46,6 +51,7 @@ public static class DragDropHelper
             Directory.CreateDirectory(tempDir);
 
             using var reader = new BinaryReader(descriptorStream);
+            descriptorStream.Position = 0;
             int fileCount = reader.ReadInt32();
 
             for (int i = 0; i < fileCount; i++)
@@ -178,6 +184,16 @@ public static class DragDropHelper
     /// <param name="fileExtensionFilter">Filter function to check file extensions</param>
     /// <returns>True if matching files are found</returns>
     public static bool CheckForFilesInDescriptor(IDataObject data, Func<string, bool> fileExtensionFilter)
+        => CountFilesInDescriptor(data, fileExtensionFilter).matchingCount > 0;
+
+    public static bool HasSingleFileInDescriptor(IDataObject data, Func<string, bool> fileExtensionFilter)
+    {
+        var (fileCount, matchingCount) = CountFilesInDescriptor(data, fileExtensionFilter);
+        return fileCount == 1 && matchingCount == 1;
+    }
+
+    private static (int fileCount, int matchingCount) CountFilesInDescriptor(
+        IDataObject data, Func<string, bool> fileExtensionFilter)
     {
         try
         {
@@ -186,55 +202,56 @@ public static class DragDropHelper
             {
                 format = "FileGroupDescriptor";
                 if (!data.GetDataPresent(format))
-                    return false;
+                    return (0, 0);
             }
 
             if (data.GetData(format) is not MemoryStream stream)
-                return false;
+                return (0, 0);
 
-            using var reader = new BinaryReader(stream);
-            int fileCount = reader.ReadInt32();
-
-            for (int i = 0; i < fileCount; i++)
+            var originalPosition = stream.Position;
+            try
             {
-                stream.Seek(4 + (i * 592) + 72, SeekOrigin.Begin);
+                using var reader = new BinaryReader(stream, System.Text.Encoding.Unicode, leaveOpen: true);
+                stream.Position = 0;
+                int fileCount = reader.ReadInt32();
+                int matchingCount = 0;
 
-                // Read filename (520 bytes, Unicode)
-                byte[] filenameBytes = reader.ReadBytes(520);
-                
-                // Find null terminator
-                int nullIndex = -1;
-                for (int j = 0; j < filenameBytes.Length - 1; j += 2)
+                for (int i = 0; i < fileCount; i++)
                 {
-                    if (filenameBytes[j] == 0 && filenameBytes[j + 1] == 0)
+                    stream.Seek(4 + (i * 592) + 72, SeekOrigin.Begin);
+
+                    // Read filename (520 bytes, Unicode)
+                    byte[] filenameBytes = reader.ReadBytes(520);
+
+                    int nullIndex = -1;
+                    for (int j = 0; j < filenameBytes.Length - 1; j += 2)
                     {
-                        nullIndex = j;
-                        break;
+                        if (filenameBytes[j] == 0 && filenameBytes[j + 1] == 0)
+                        {
+                            nullIndex = j;
+                            break;
+                        }
                     }
-                }
-                
-                string filename;
-                if (nullIndex > 0)
-                {
-                    filename = System.Text.Encoding.Unicode.GetString(filenameBytes, 0, nullIndex);
-                }
-                else
-                {
-                    filename = System.Text.Encoding.Unicode.GetString(filenameBytes).TrimEnd('\0');
+
+                    string filename = nullIndex > 0
+                        ? System.Text.Encoding.Unicode.GetString(filenameBytes, 0, nullIndex)
+                        : System.Text.Encoding.Unicode.GetString(filenameBytes).TrimEnd('\0');
+
+                    if (fileExtensionFilter(filename))
+                        matchingCount++;
                 }
 
-                if (fileExtensionFilter(filename))
-                {
-                    return true;
-                }
+                return (fileCount, matchingCount);
             }
-
-            return false;
+            finally
+            {
+                stream.Position = originalPosition;
+            }
         }
         catch (Exception ex)
         {
             LogHelper.Log($"Error checking FileGroupDescriptor: {ex.Message}", LogType.Error);
-            return false;
+            return (0, 0);
         }
     }
 

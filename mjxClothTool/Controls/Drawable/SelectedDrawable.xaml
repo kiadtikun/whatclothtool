@@ -768,6 +768,7 @@
                                                 Drop="TextureListBox_Drop"
                                                 DragEnter="TextureListBox_DragEnter"
                                                 DragOver="TextureListBox_DragOver"
+                                                DragLeave="TextureListBox_DragLeave"
                                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                 ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                                 AlternationCount="2">
@@ -782,6 +783,8 @@
                                                                 <ControlTemplate TargetType="ListBoxItem">
                                                                     <Border x:Name="ItemBorder"
                                                                             Background="{DynamicResource Brush100}"
+                                                                    BorderBrush="Transparent"
+                                                                    BorderThickness="1"
                                                                             SnapsToDevicePixels="True"
                                                                             IsHitTestVisible="True">
                                                                         <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center"/>
@@ -791,7 +794,8 @@
                                                                             <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush200}" />
                                                                         </Trigger>
                                                                         <Trigger SourceName="ItemBorder" Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush300}" />
+                                                                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush350}" />
+                                                                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="{DynamicResource Brush700}" />
                                                                         </Trigger>
                                                                         <Trigger Property="IsSelected" Value="True">
                                                                             <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush400}" />
@@ -803,6 +807,11 @@
                                                                             </MultiTrigger.Conditions>
                                                                             <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush450}" />
                                                                         </MultiTrigger>
+                                                                        <Trigger Property="Tag" Value="ReplaceDropTarget">
+                                                                            <Setter TargetName="ItemBorder" Property="Background" Value="{DynamicResource Brush350}" />
+                                                                            <Setter TargetName="ItemBorder" Property="BorderBrush" Value="#3B82F6" />
+                                                                            <Setter TargetName="ItemBorder" Property="BorderThickness" Value="2" />
+                                                                        </Trigger>
                                                                     </ControlTemplate.Triggers>
                                                                 </ControlTemplate>
                                                             </Setter.Value>
@@ -988,6 +997,8 @@
                                                                     </MenuItem>
                                                                     <MenuItem Header="Remove" Click="DeleteTexture_Click"/>
                                                                     <MenuItem Header="Replace" Click="ReplaceTexture_Click"/>
+                                                                    <MenuItem Header="Undo replace" Click="UndoReplaceTexture_Click"
+                                                                              IsEnabled="{Binding CanUndoReplacement}" />
                                                                     <MenuItem Header="Open file location" Click="OpenFileLocation_Click" />
                                                                     <MenuItem Header="Export as YTD" Click="ExportTexture_Click" Tag="YTD" />
                                                                     <MenuItem Header="Export texture as DDS" Click="ExportTexture_Click" Tag="DDS"/>
@@ -1274,7 +1285,7 @@
                                             </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" Orientation="Horizontal">
                                             <Button x:Name="AddTexturesButton"
-                                                    Content="ADD TEXTURES"
+                                                    Content="ADD / DROP TEXTURES"
                                                     FontSize="11"
                                                     FontWeight="SemiBold"
                                                     Padding="12,6"
@@ -1282,6 +1293,12 @@
                                                     BorderBrush="{DynamicResource Brush300}"
                                                     Foreground="{DynamicResource Brush900}"
                                                     Margin="0,0,6,0"
+                                                    ToolTip="Click to browse, or drop texture files here to add without replacing"
+                                                    AllowDrop="True"
+                                                    DragEnter="TextureListBox_DragEnter"
+                                                    DragOver="TextureListBox_DragOver"
+                                                    DragLeave="TextureListBox_DragLeave"
+                                                    Drop="TextureListBox_Drop"
                                                     Click="AddTexture_Click" />
 
                                             <Button x:Name="DeleteTextureButton"
@@ -1298,6 +1315,14 @@
                                                                    Foreground="{DynamicResource Brush900}" />
                                              </Button>
                                          </StackPanel>
+
+                                            <TextBlock Grid.Column="1"
+                                                       Text="Ctrl + drop on a row to replace"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource Brush700}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Margin="8,0" />
 
                                             <StackPanel Grid.Column="2"
                                                         Orientation="Horizontal"
