@@ -9,6 +9,8 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 
 namespace mjxClothTool.Views
@@ -38,20 +40,6 @@ namespace mjxClothTool.Views
         public string FileName => Path.GetFileName(FilePath);
         public bool RequiresGender { get; }
         public bool RequiresDrawableType { get; }
-
-        private bool _isSelected;
-        public bool IsSelected
-        {
-            get => _isSelected;
-            set
-            {
-                if (_isSelected != value)
-                {
-                    _isSelected = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
 
         private bool _isPreviewed;
         public bool IsPreviewed
@@ -164,7 +152,7 @@ namespace mjxClothTool.Views
 
         public IEnumerable<string> GenderTypes => DrawableImportResolveItem.GenderOptions.Keys;
         public List<string> AssetTypes { get; set; } = ["Component", "Prop"];
-        public ObservableCollection<DrawableImportResolveItem> Items { get; set; } = [];
+        public ObservableCollection<DrawableImportResolveItem> Items { get; } = [];
         internal Dictionary<string, DrawableImportGender> SelectedGenders { get; private set; } = [];
         public Dictionary<string, (bool IsProp, int DrawableType)> SelectedDrawableTypes { get; private set; } = [];
 
@@ -172,9 +160,7 @@ namespace mjxClothTool.Views
         public Visibility DrawableTextVisibility => _showDrawableProperties ? Visibility.Visible : Visibility.Collapsed;
         public Visibility GenderControlsVisibility => _showGender ? Visibility.Visible : Visibility.Collapsed;
         public Visibility DrawableControlsVisibility => _showDrawableProperties ? Visibility.Visible : Visibility.Collapsed;
-        public IEnumerable<DrawableImportResolveItem> VisibleItems => ShowResolvedItems
-            ? Items
-            : Items.Where(x => !x.IsResolved);
+        public ICollectionView VisibleItems { get; }
         public string HeaderText
         {
             get
@@ -196,7 +182,7 @@ namespace mjxClothTool.Views
             {
                 if (_reviewDroppedFiles)
                 {
-                    return "Click a file name to preview it. Check files to apply Gender or Drawable Component before import.";
+                    return "Click a row to preview it. Hold Shift and click another row to select a range for Apply.";
                 }
 
                 var parts = new List<string>();
@@ -210,10 +196,10 @@ namespace mjxClothTool.Views
                     parts.Add("drawable properties");
                 }
 
-                return $"Click a file name to preview it. Check files to apply {string.Join(" and ", parts)}. Use Show resolved to see resolved files.";
+                return $"Click a row to preview it. Hold Shift and click another row to select a range, then apply {string.Join(" and ", parts)}.";
             }
         }
-        public string SelectionSummary => $"{Items.Count(x => x.IsSelected)} checked, {Items.Count(x => x.IsResolved)} of {Items.Count} resolved";
+        public string SelectionSummary => $"{ImportList.SelectedItems.Count} selected, {Items.Count(x => x.IsResolved)} of {Items.Count} resolved";
 
         private bool _showResolvedItems;
         public bool ShowResolvedItems
@@ -225,7 +211,7 @@ namespace mjxClothTool.Views
                 {
                     _showResolvedItems = value;
                     OnPropertyChanged();
-                    OnPropertyChanged(nameof(VisibleItems));
+                    VisibleItems.Refresh();
                 }
             }
         }
@@ -320,7 +306,7 @@ namespace mjxClothTool.Views
             _showGender = showGender;
             _showDrawableProperties = showDrawableProperties;
             _reviewDroppedFiles = reviewDroppedFiles;
-            ShowResolvedItems = reviewDroppedFiles;
+            _showResolvedItems = reviewDroppedFiles;
 
             foreach (var path in paths)
             {
@@ -335,11 +321,13 @@ namespace mjxClothTool.Views
                     drawableType,
                     _showGender,
                     _showDrawableProperties);
-                item.IsSelected = reviewDroppedFiles;
-                item.PropertyChanged += ImportItem_PropertyChanged;
                 Items.Add(item);
             }
 
+            VisibleItems = new ListCollectionView(Items)
+            {
+                Filter = item => ShowResolvedItems || !((DrawableImportResolveItem)item).IsResolved
+            };
             DataContext = this;
 
             if (reviewDroppedFiles)
@@ -352,12 +340,18 @@ namespace mjxClothTool.Views
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            await ShowPreviewAsync(VisibleItems.FirstOrDefault());
+            if (ImportList.Items.Count > 0)
+            {
+                ImportList.SelectedIndex = 0;
+            }
+            await ShowPreviewAsync(ImportList.SelectedItem as DrawableImportResolveItem);
         }
 
-        private async void PreviewItem_Click(object sender, RoutedEventArgs e)
+        private async void ImportRow_GotKeyboardFocus(object sender, KeyboardFocusChangedEventArgs e)
         {
-            if (sender is FrameworkElement { DataContext: DrawableImportResolveItem item })
+            if (sender == e.NewFocus &&
+                sender is ListBoxItem { Content: DrawableImportResolveItem item } &&
+                item != _previewedItem)
             {
                 await ShowPreviewAsync(item);
             }
@@ -483,23 +477,8 @@ namespace mjxClothTool.Views
                 return;
             }
 
-            var targetItems = GetControlTargetItems()
-                .Where(x => x.RequiresGender)
-                .ToList();
-
-            _isApplyingBulkUpdate = true;
-            foreach (var item in targetItems)
-            {
-                item.SetGender(gender);
-            }
-
-            foreach (var item in targetItems)
-            {
-                item.IsSelected = !item.IsResolved;
-            }
-            _isApplyingBulkUpdate = false;
-
-            OnItemsChanged();
+            ApplyToSelection(GetControlTargetItems().Where(item => item.RequiresGender),
+                item => item.SetGender(gender));
         }
 
         private void ApplyDrawable_MyBtnClickEvent(object sender, RoutedEventArgs e)
@@ -511,21 +490,33 @@ namespace mjxClothTool.Views
 
             var isProp = IsProp;
             var drawableType = SelectedDrawableType;
-            var targetItems = GetControlTargetItems()
-                .Where(x => x.RequiresDrawableType)
-                .ToList();
+            ApplyToSelection(GetControlTargetItems().Where(item => item.RequiresDrawableType),
+                item => item.SetDrawableType(isProp, drawableType));
+        }
 
+        private void ApplyToSelection(IEnumerable<DrawableImportResolveItem> items, Action<DrawableImportResolveItem> apply)
+        {
             _isApplyingBulkUpdate = true;
-            foreach (var item in targetItems)
+            try
             {
-                item.SetDrawableType(isProp, drawableType);
-            }
+                foreach (var item in items)
+                {
+                    apply(item);
+                    if (item.IsResolved)
+                    {
+                        ImportList.SelectedItems.Remove(item);
+                    }
+                }
 
-            foreach (var item in targetItems)
-            {
-                item.IsSelected = !item.IsResolved;
+                if (!ShowResolvedItems)
+                {
+                    VisibleItems.Refresh();
+                }
             }
-            _isApplyingBulkUpdate = false;
+            finally
+            {
+                _isApplyingBulkUpdate = false;
+            }
 
             OnItemsChanged();
         }
@@ -590,9 +581,6 @@ namespace mjxClothTool.Views
             {
                 item.SetDrawableType(IsProp, SelectedDrawableType);
             }
-
-            item.IsSelected = !item.IsResolved;
-            OnItemsChanged();
         }
 
         private void Cancel_MyBtnClickEvent(object sender, RoutedEventArgs e)
@@ -601,36 +589,15 @@ namespace mjxClothTool.Views
             Close();
         }
 
-        private void SelectAll_Click(object sender, RoutedEventArgs e)
+        private void SelectAll_Click(object sender, RoutedEventArgs e) => ImportList.SelectAll();
+
+        private void SelectNone_Click(object sender, RoutedEventArgs e) => ImportList.UnselectAll();
+
+        private void ImportList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            var visibleItems = VisibleItems.ToHashSet();
-
-            _isApplyingBulkUpdate = true;
-            foreach (var item in Items)
+            if (!_isApplyingBulkUpdate)
             {
-                item.IsSelected = visibleItems.Contains(item);
-            }
-            _isApplyingBulkUpdate = false;
-
-            OnItemsChanged();
-        }
-
-        private void SelectNone_Click(object sender, RoutedEventArgs e)
-        {
-            foreach (var item in VisibleItems)
-            {
-                item.IsSelected = false;
-            }
-
-            OnItemsChanged();
-        }
-
-        private void ImportItem_PropertyChanged(object sender, PropertyChangedEventArgs e)
-        {
-            if (e.PropertyName == nameof(DrawableImportResolveItem.IsSelected) ||
-                e.PropertyName == nameof(DrawableImportResolveItem.IsResolved))
-            {
-                OnItemsChanged();
+                NotifySelectionChanged();
             }
         }
 
@@ -641,34 +608,35 @@ namespace mjxClothTool.Views
                 return;
             }
 
-            item.PropertyChanged -= ImportItem_PropertyChanged;
             OnItemsChanged();
             if (_previewedItem == item)
             {
-                await ShowPreviewAsync(VisibleItems.FirstOrDefault());
+                if (ImportList.SelectedItem == null && ImportList.Items.Count > 0)
+                {
+                    ImportList.SelectedIndex = 0;
+                }
+                await ShowPreviewAsync(ImportList.SelectedItem as DrawableImportResolveItem);
             }
         }
 
         private void OnItemsChanged()
         {
-            if (!_isApplyingBulkUpdate)
-            {
-                SyncControlSelectionsFromSingleTarget();
-            }
-
             OnPropertyChanged(nameof(HeaderText));
-            OnPropertyChanged(nameof(VisibleItems));
+            OnPropertyChanged(nameof(IsSubmitEnabled));
+            NotifySelectionChanged();
+        }
+
+        private void NotifySelectionChanged()
+        {
+            SyncControlSelectionsFromSingleTarget();
             OnPropertyChanged(nameof(SelectionSummary));
             OnPropertyChanged(nameof(IsGenderApplyEnabled));
             OnPropertyChanged(nameof(IsDrawableApplyEnabled));
-            OnPropertyChanged(nameof(IsSubmitEnabled));
-            OnPropertyChanged(nameof(GenderControlsVisibility));
-            OnPropertyChanged(nameof(DrawableControlsVisibility));
         }
 
         private List<DrawableImportResolveItem> GetControlTargetItems()
         {
-            var selectedItems = Items.Where(x => x.IsSelected).ToList();
+            var selectedItems = ImportList.SelectedItems.Cast<DrawableImportResolveItem>().ToList();
             if (selectedItems.Count > 0)
             {
                 return selectedItems;

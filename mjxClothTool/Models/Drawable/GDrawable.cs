@@ -379,6 +379,7 @@ public class GDrawable : INotifyPropertyChanged
     public Task DetailsLoaded => _isLoading ? _detailsLoadedTcs.Task : Task.CompletedTask;
 
     private bool _isLoading;
+    [JsonIgnore]
     public bool IsLoading
     {
         get => _isLoading;

@@ -20,7 +20,7 @@ public static class ImgHelper
 
         try
         {
-            if(ext == ".ytd")
+            if (string.Equals(ext, ".ytd", StringComparison.OrdinalIgnoreCase))
             {
                 var ytd = CWHelper.GetYtdFile(path);
 

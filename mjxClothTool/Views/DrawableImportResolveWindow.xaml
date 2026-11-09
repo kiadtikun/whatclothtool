@@ -7,9 +7,11 @@
         mc:Ignorable="d"
         Loaded="Window_Loaded"
         Title="Resolve drawable import"
-        ResizeMode="NoResize"
+        ResizeMode="CanResizeWithGrip"
         Background="{DynamicResource Brush50}"
         WindowStartupLocation="CenterOwner"
+        MinHeight="560"
+        MinWidth="680"
         Height="680"
         Width="780">
     <Grid>
@@ -30,7 +32,7 @@
                         <Setter Property="Background" Value="{DynamicResource Brush75}"/>
                         <Setter Property="BorderBrush" Value="{DynamicResource Brush300}"/>
                     </DataTrigger>
-                    <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
                         <Setter Property="Background" Value="{DynamicResource Brush200}"/>
                         <Setter Property="BorderBrush" Value="{DynamicResource Brush400}"/>
                     </DataTrigger>
@@ -48,9 +50,9 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="1.25*" MinHeight="94"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="3*" MinHeight="250"/>
             </Grid.RowDefinitions>
             <TextBlock Text="{Binding HeaderText}" FontSize="16" Foreground="{DynamicResource Brush950}" FontWeight="Medium"/>
             <TextBlock Grid.Row="1"
@@ -64,8 +66,7 @@
             <Border Grid.Row="2"
                     BorderBrush="{DynamicResource Brush200}"
                     BorderThickness="1"
-                    Background="{DynamicResource Brush100}"
-                    Margin="0,0,0,12">
+                    Background="{DynamicResource Brush100}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -94,224 +95,247 @@
                                     Click="SelectNone_Click"/>
                         </StackPanel>
                     </DockPanel>
-                    <ScrollViewer Grid.Row="1"
-                                  MaxHeight="155"
-                                  VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding VisibleItems}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <Border Style="{StaticResource DrawableImportResolveRowBorder}">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <CheckBox Grid.Column="0"
-                                                      IsChecked="{Binding IsSelected, Mode=TwoWay}"
-                                                      AutomationProperties.Name="{Binding FileName, StringFormat=Check {0} for Apply}"
-                                                      VerticalAlignment="Center"
-                                                      Margin="0,0,8,0"/>
-                                            <Button Grid.Column="1"
-                                                    AutomationProperties.Name="{Binding FileName, StringFormat=Preview {0}}"
-                                                    ToolTip="{Binding FilePath}"
-                                                    Background="Transparent"
-                                                    BorderThickness="0"
-                                                    Padding="0"
-                                                    HorizontalContentAlignment="Stretch"
-                                                    Cursor="Hand"
-                                                    Click="PreviewItem_Click">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding FileName}"
-                                                               Foreground="{DynamicResource Brush950}"
-                                                               FontWeight="SemiBold"
-                                                               TextTrimming="CharacterEllipsis"/>
-                                                    <TextBlock Text="{Binding FilePath}"
-                                                               Foreground="{DynamicResource Brush500}"
-                                                               FontSize="11"
-                                                               TextTrimming="CharacterEllipsis"/>
-                                                </StackPanel>
-                                            </Button>
-                                            <StackPanel Grid.Column="2"
-                                                        Orientation="Horizontal"
-                                                        VerticalAlignment="Center"
-                                                        Margin="12,0,0,0">
-                                                <TextBlock Text="{Binding GenderText}"
-                                                           Visibility="{Binding DataContext.GenderTextVisibility, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                           Foreground="{DynamicResource Brush600}"
-                                                           FontSize="11"
-                                                           Margin="0,0,10,0">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasGender}" Value="True">
-                                                                    <Setter Property="Foreground" Value="{DynamicResource Brush900}"/>
-                                                                    <Setter Property="FontWeight" Value="SemiBold"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                                <TextBlock Text="{Binding DrawableText}"
-                                                           Visibility="{Binding DataContext.DrawableTextVisibility, RelativeSource={RelativeSource AncestorType=Window}}"
-                                                           Foreground="{DynamicResource Brush600}"
-                                                           FontSize="11">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasDrawableType}" Value="True">
-                                                                    <Setter Property="Foreground" Value="{DynamicResource Brush900}"/>
-                                                                    <Setter Property="FontWeight" Value="SemiBold"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </StackPanel>
-                                            <Button Grid.Column="3"
-                                                    Content="Remove"
-                                                    AutomationProperties.Name="{Binding FileName, StringFormat=Remove {0}}"
-                                                    ToolTip="Remove from the import list"
-                                                    Margin="10,0,0,0"
-                                                    Padding="8,2"
+                    <ListBox x:Name="ImportList"
+                             Grid.Row="1"
+                             ItemsSource="{Binding VisibleItems}"
+                             SelectionMode="Extended"
+                             IsSynchronizedWithCurrentItem="False"
+                             SelectionChanged="ImportList_SelectionChanged"
+                             AutomationProperties.Name="Drawables to import"
+                             Background="Transparent"
+                             BorderThickness="0"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="AutomationProperties.Name" Value="{Binding FileName}"/>
+                                <Setter Property="AutomationProperties.HelpText" Value="{Binding FilePath}"/>
+                                <EventSetter Event="GotKeyboardFocus" Handler="ImportRow_GotKeyboardFocus"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <ContentPresenter/>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource DrawableImportResolveRowBorder}">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" ToolTip="{Binding FilePath}">
+                                            <TextBlock Text="{Binding FileName}"
+                                                       Foreground="{DynamicResource Brush950}"
+                                                       FontWeight="SemiBold"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding FilePath}"
+                                                       Foreground="{DynamicResource Brush500}"
+                                                       FontSize="11"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1"
+                                                    Orientation="Horizontal"
                                                     VerticalAlignment="Center"
-                                                    Click="RemoveItem_Click"/>
-                                        </Grid>
-                                    </Border>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
-                    </ScrollViewer>
+                                                    Margin="12,0,0,0">
+                                            <TextBlock Text="{Binding GenderText}"
+                                                       Visibility="{Binding DataContext.GenderTextVisibility, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       Foreground="{DynamicResource Brush600}"
+                                                       FontSize="11"
+                                                       Margin="0,0,10,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasGender}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Brush900}"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding DrawableText}"
+                                                       Visibility="{Binding DataContext.DrawableTextVisibility, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                       Foreground="{DynamicResource Brush600}"
+                                                       FontSize="11">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasDrawableType}" Value="True">
+                                                                <Setter Property="Foreground" Value="{DynamicResource Brush900}"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                        <Button Grid.Column="2"
+                                                Content="Remove"
+                                                AutomationProperties.Name="{Binding FileName, StringFormat=Remove {0}}"
+                                                ToolTip="Remove from the import list"
+                                                Margin="10,0,0,0"
+                                                Padding="8,2"
+                                                VerticalAlignment="Center"
+                                                Click="RemoveItem_Click"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Grid>
             </Border>
 
-            <StackPanel Grid.Row="3">
-                <Grid x:Name="GenderControls"
-                      Margin="0,0,0,8"
-                      Visibility="{Binding GenderControlsVisibility}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="210"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="170"/>
-                    </Grid.ColumnDefinitions>
-                    <c:ModernLabelComboBox
-                        Grid.Column="0"
-                        Label="Gender"
-                        ItemsSource="{Binding GenderTypes}"
-                        SelectedItem="{Binding SelectedGender}"
-                        Margin="0,0,0,5"/>
-                    <c:CustomButton
-                        Grid.Column="2"
-                        Label="Apply gender"
-                        CornerRadius="5"
-                        Height="40"
-                        VerticalAlignment="Top"
-                        Margin="0,5,0,5"
-                        IsEnabled="{Binding IsGenderApplyEnabled}"
-                        MyBtnClickEvent="ApplyGender_MyBtnClickEvent"/>
-                </Grid>
+            <GridSplitter Grid.Row="3"
+                          Height="8"
+                          Margin="0,3"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Center"
+                          ResizeDirection="Rows"
+                          ResizeBehavior="PreviousAndNext"
+                          Background="{DynamicResource Brush200}"
+                          ToolTip="Drag to resize the file list"
+                          AutomationProperties.Name="Resize the file list"/>
 
-                <Grid x:Name="DrawableControls"
-                      Visibility="{Binding DrawableControlsVisibility}">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="210"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="210"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="170"/>
-                    </Grid.ColumnDefinitions>
-                    <c:ModernLabelComboBox
-                        Grid.Column="0"
-                        Label="Asset type"
-                        ItemsSource="{Binding AssetTypes}"
-                        SelectedItem="{Binding SelectedAssetType}"
-                        Margin="0,0,0,5"
-                        IsUpdated="AssetType_IsUpdated"/>
-                    <c:ModernLabelComboBox
-                        Grid.Column="2"
-                        Label="Drawable Component"
-                        IsEnabled="{Binding IsAssetTypeSelected}"
-                        ItemsSource="{Binding DrawableTypes}"
-                        SelectedItem="{Binding SelectedDrawableType}"
-                        Margin="0,0,0,5"/>
-                    <c:CustomButton
-                        Grid.Column="4"
-                        Label="Apply properties"
-                        CornerRadius="5"
-                        Height="40"
-                        VerticalAlignment="Top"
-                        Margin="0,5,0,5"
-                        IsEnabled="{Binding IsDrawableApplyEnabled}"
-                        MyBtnClickEvent="ApplyDrawable_MyBtnClickEvent"/>
-                </Grid>
-            </StackPanel>
-
-            <Border Grid.Row="4"
-                    Margin="0,8,0,0"
-                    Padding="10"
-                    Background="{DynamicResource Brush100}"
-                    BorderBrush="{DynamicResource Brush200}"
-                    BorderThickness="1"
-                    CornerRadius="4">
-                <DockPanel>
-                    <TextBlock x:Name="PreviewTitle"
-                               DockPanel.Dock="Top"
-                               Text="3D Preview"
-                               FontWeight="SemiBold"
-                               Foreground="{DynamicResource Brush950}"
-                               Margin="0,0,0,6"
-                               TextTrimming="CharacterEllipsis"/>
-                    <Grid Background="{DynamicResource Brush75}"
-                          ClipToBounds="True"
-                          MouseLeftButtonDown="Preview_MouseLeftButtonDown"
-                          MouseMove="Preview_MouseMove"
-                          MouseLeftButtonUp="Preview_MouseLeftButtonUp">
-                        <Viewport3D x:Name="PreviewViewport"
-                                    IsHitTestVisible="False"
-                                    SizeChanged="PreviewViewport_SizeChanged">
-                            <Viewport3D.Camera>
-                                <OrthographicCamera x:Name="PreviewCamera"
-                                                    Position="0,4,0.5"
-                                                    LookDirection="0,-4,-0.5"
-                                                    UpDirection="0,0,1"/>
-                            </Viewport3D.Camera>
-                            <ModelVisual3D>
-                                <ModelVisual3D.Content>
-                                    <Model3DGroup>
-                                        <AmbientLight Color="#A0A0A0"/>
-                                        <DirectionalLight Color="#BFBFBF" Direction="-1,-2,-3"/>
-                                        <DirectionalLight Color="#505050" Direction="1,2,-1"/>
-                                    </Model3DGroup>
-                                </ModelVisual3D.Content>
-                            </ModelVisual3D>
-                            <ModelVisual3D x:Name="PreviewModel">
-                                <ModelVisual3D.Transform>
-                                    <RotateTransform3D>
-                                        <RotateTransform3D.Rotation>
-                                            <AxisAngleRotation3D x:Name="PreviewRotation" Axis="0,0,1" Angle="0"/>
-                                        </RotateTransform3D.Rotation>
-                                    </RotateTransform3D>
-                                </ModelVisual3D.Transform>
-                            </ModelVisual3D>
-                        </Viewport3D>
-                        <TextBlock x:Name="PreviewStatus"
-                                   Text="Choose a file to preview."
-                                   Foreground="{DynamicResource Brush600}"
-                                   IsHitTestVisible="False"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"/>
-                        <TextBlock x:Name="PreviewHint"
-                                   Text="Drag to rotate"
-                                   Foreground="{DynamicResource Brush600}"
-                                   Visibility="Collapsed"
-                                   IsHitTestVisible="False"
-                                   HorizontalAlignment="Right"
-                                   VerticalAlignment="Bottom"
-                                   Margin="6"/>
+            <Grid Grid.Row="4">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0">
+                    <Grid x:Name="GenderControls"
+                          Margin="0,0,0,8"
+                          Visibility="{Binding GenderControlsVisibility}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="210"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="170"/>
+                        </Grid.ColumnDefinitions>
+                        <c:ModernLabelComboBox
+                            Grid.Column="0"
+                            Label="Gender"
+                            ItemsSource="{Binding GenderTypes}"
+                            SelectedItem="{Binding SelectedGender}"
+                            Margin="0,0,0,5"/>
+                        <c:CustomButton
+                            Grid.Column="2"
+                            Label="Apply gender"
+                            CornerRadius="5"
+                            Height="40"
+                            VerticalAlignment="Top"
+                            Margin="0,5,0,5"
+                            IsEnabled="{Binding IsGenderApplyEnabled}"
+                            MyBtnClickEvent="ApplyGender_MyBtnClickEvent"/>
                     </Grid>
-                </DockPanel>
-            </Border>
+
+                    <Grid x:Name="DrawableControls"
+                          Visibility="{Binding DrawableControlsVisibility}">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="210"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="210"/>
+                            <ColumnDefinition Width="10"/>
+                            <ColumnDefinition Width="170"/>
+                        </Grid.ColumnDefinitions>
+                        <c:ModernLabelComboBox
+                            Grid.Column="0"
+                            Label="Asset type"
+                            ItemsSource="{Binding AssetTypes}"
+                            SelectedItem="{Binding SelectedAssetType}"
+                            Margin="0,0,0,5"
+                            IsUpdated="AssetType_IsUpdated"/>
+                        <c:ModernLabelComboBox
+                            Grid.Column="2"
+                            Label="Drawable Component"
+                            IsEnabled="{Binding IsAssetTypeSelected}"
+                            ItemsSource="{Binding DrawableTypes}"
+                            SelectedItem="{Binding SelectedDrawableType}"
+                            Margin="0,0,0,5"/>
+                        <c:CustomButton
+                            Grid.Column="4"
+                            Label="Apply properties"
+                            CornerRadius="5"
+                            Height="40"
+                            VerticalAlignment="Top"
+                            Margin="0,5,0,5"
+                            IsEnabled="{Binding IsDrawableApplyEnabled}"
+                            MyBtnClickEvent="ApplyDrawable_MyBtnClickEvent"/>
+                    </Grid>
+                </StackPanel>
+
+                <Border Grid.Row="1"
+                        Margin="0,8,0,0"
+                        Padding="10"
+                        Background="{DynamicResource Brush100}"
+                        BorderBrush="{DynamicResource Brush200}"
+                        BorderThickness="1"
+                        CornerRadius="4">
+                    <DockPanel>
+                        <TextBlock x:Name="PreviewTitle"
+                                   DockPanel.Dock="Top"
+                                   Text="3D Preview"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource Brush950}"
+                                   Margin="0,0,0,6"
+                                   TextTrimming="CharacterEllipsis"/>
+                        <Grid Background="{DynamicResource Brush75}"
+                              ClipToBounds="True"
+                              MouseLeftButtonDown="Preview_MouseLeftButtonDown"
+                              MouseMove="Preview_MouseMove"
+                              MouseLeftButtonUp="Preview_MouseLeftButtonUp">
+                            <Viewport3D x:Name="PreviewViewport"
+                                        IsHitTestVisible="False"
+                                        SizeChanged="PreviewViewport_SizeChanged">
+                                <Viewport3D.Camera>
+                                    <OrthographicCamera x:Name="PreviewCamera"
+                                                        Position="0,4,0.5"
+                                                        LookDirection="0,-4,-0.5"
+                                                        UpDirection="0,0,1"/>
+                                </Viewport3D.Camera>
+                                <ModelVisual3D>
+                                    <ModelVisual3D.Content>
+                                        <Model3DGroup>
+                                            <AmbientLight Color="#A0A0A0"/>
+                                            <DirectionalLight Color="#BFBFBF" Direction="-1,-2,-3"/>
+                                            <DirectionalLight Color="#505050" Direction="1,2,-1"/>
+                                        </Model3DGroup>
+                                    </ModelVisual3D.Content>
+                                </ModelVisual3D>
+                                <ModelVisual3D x:Name="PreviewModel">
+                                    <ModelVisual3D.Transform>
+                                        <RotateTransform3D>
+                                            <RotateTransform3D.Rotation>
+                                                <AxisAngleRotation3D x:Name="PreviewRotation" Axis="0,0,1" Angle="0"/>
+                                            </RotateTransform3D.Rotation>
+                                        </RotateTransform3D>
+                                    </ModelVisual3D.Transform>
+                                </ModelVisual3D>
+                            </Viewport3D>
+                            <TextBlock x:Name="PreviewStatus"
+                                       Text="Choose a file to preview."
+                                       Foreground="{DynamicResource Brush600}"
+                                       IsHitTestVisible="False"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="PreviewHint"
+                                       Text="Drag to rotate"
+                                       Foreground="{DynamicResource Brush600}"
+                                       Visibility="Collapsed"
+                                       IsHitTestVisible="False"
+                                       HorizontalAlignment="Right"
+                                       VerticalAlignment="Bottom"
+                                       Margin="6"/>
+                        </Grid>
+                    </DockPanel>
+                </Border>
+            </Grid>
         </Grid>
 
         <Grid Grid.Row="1" Margin="5">

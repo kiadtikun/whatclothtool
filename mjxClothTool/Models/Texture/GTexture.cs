@@ -139,7 +139,11 @@ public class GTexture : INotifyPropertyChanged
 
     public GTextureDetails TxtDetails { get; set; }
 
+    [JsonIgnore]
+    public Task<GTextureDetails?> DetailsLoaded { get; private set; }
+
     private bool _isLoading;
+    [JsonIgnore]
     public bool IsLoading
     {
         get => _isLoading;
@@ -189,8 +193,6 @@ public class GTexture : INotifyPropertyChanged
 
     public GTexture(Guid id, string filePath, int typeNumeric, int number, int txtNumber, bool hasSkin, bool isProp)
     {
-        IsLoading = true;
-
         Id = id;
         if (Id == Guid.Empty)
         {
@@ -206,46 +208,7 @@ public class GTexture : INotifyPropertyChanged
         HasSkin = hasSkin;
         DisplayName = GetBuildName();
 
-        if (filePath != null)
-        {
-            try
-            {
-                var fullPath = FileHelper.ResolveFilePath(filePath);
-                Task<GTextureDetails?> _textureDetailsTask = LoadTextureDetailsWithConcurrencyControl(fullPath).ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        LogHelper.Log($"Failed to load texture details for '{DisplayName}': {t.Exception?.InnerException?.Message ?? t.Exception?.Message}", Views.LogType.Warning);
-                        IsLoading = false;
-                        return null;
-                    }
-
-                    IsLoading = false; // Loading finished
-                if (t.Status == TaskStatus.RanToCompletion)
-                {
-                    if (t.Result == null)
-                    {
-                        IsPreviewDisabled = true;
-                        return null;
-                    }
-
-                    TxtDetails = t.Result;
-                    OnPropertyChanged(nameof(TxtDetails));
-                    OnPropertyChanged(nameof(CanEditYtdTextureName));
-
-                    TxtDetails.Validate();
-                }
-
-                return t.Result;
-            });
-            }
-            catch (Exception ex)
-            {
-                LogHelper.Log($"Could not load texture '{DisplayName}': {ex.Message}", Views.LogType.Warning);
-                IsLoading = false;
-                IsPreviewDisabled = true;
-            }
-        }
+        DetailsLoaded = LoadTextureMetadataAsync();
     }
 
     public async void LoadThumbnailAsync()
@@ -325,21 +288,36 @@ public class GTexture : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
-    public async Task LoadDetails()
+    public Task LoadDetails() => DetailsLoaded = LoadTextureMetadataAsync();
+
+    private async Task<GTextureDetails?> LoadTextureMetadataAsync()
     {
-        if (File.Exists(FullFilePath))
+        IsLoading = true;
+        try
         {
-            var result = await LoadTextureDetailsWithConcurrencyControl(FullFilePath);
+            var result = FilePath == null
+                ? null
+                : await LoadTextureDetailsWithConcurrencyControl(FullFilePath).ConfigureAwait(false);
+            IsPreviewDisabled = result == null;
             if (result != null)
             {
+                result.Validate();
                 TxtDetails = result;
                 OnPropertyChanged(nameof(TxtDetails));
                 OnPropertyChanged(nameof(CanEditYtdTextureName));
-                TxtDetails.Validate();
             }
+            return result;
         }
-
-        IsLoading = false;
+        catch (Exception ex)
+        {
+            IsPreviewDisabled = true;
+            LogHelper.Log($"Failed to load texture details for '{DisplayName}': {ex.Message}", Views.LogType.Warning);
+            return null;
+        }
+        finally
+        {
+            IsLoading = false;
+        }
     }
 
     public void UseOptimizedFile(string relativePath, GTextureDetails details)
@@ -347,6 +325,7 @@ public class GTexture : INotifyPropertyChanged
         FilePath = relativePath;
         Extension = Path.GetExtension(relativePath);
         TxtDetails = details;
+        DetailsLoaded = Task.FromResult<GTextureDetails?>(details);
         OptimizeDetails = null;
         IsOptimizedDuringBuild = false;
         ImageThumbnail = null;
@@ -388,7 +367,7 @@ public class GTexture : INotifyPropertyChanged
     private static async Task<GTextureDetails?> GetTextureDetailsAsync(string path)
     {
         var bytes = await File.ReadAllBytesAsync(path);
-        var extension = Path.GetExtension(path);
+        var extension = Path.GetExtension(path).ToLowerInvariant();
 
         if (extension == ".ytd")
         {

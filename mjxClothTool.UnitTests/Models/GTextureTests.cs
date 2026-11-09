@@ -1,4 +1,5 @@
 using mjxClothTool.Models.Texture;
+using mjxClothTool.Helpers;
 
 namespace mjxClothTool.UnitTests.Models;
 
@@ -95,6 +96,44 @@ public class GTextureTests
 
         Assert.Equal('c', texture.TxtLetter);
         Assert.Equal("jbib_diff_012_c_uni", texture.DisplayName);
+    }
+
+    [Fact]
+    public async Task DetailsLoaded_UsesActualMetadataForUppercaseYtd()
+    {
+        using var temp = new TestTempDirectory();
+        var path = temp.FilePath("texture.YTD");
+        File.Copy(Path.Combine(AppContext.BaseDirectory, "TestData", "reservedTexture.ytd"), path);
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            FilePath = path,
+            TypeNumeric = 11,
+            IsLoading = false,
+            TxtDetails = new GTextureDetails { Width = -1 }
+        });
+
+        var texture = System.Text.Json.JsonSerializer.Deserialize<GTexture>(json)!;
+        var metadata = await texture.DetailsLoaded;
+
+        Assert.NotNull(metadata);
+        Assert.True(metadata.Width > 0);
+        Assert.False(texture.IsLoading);
+
+        using var image = ImgHelper.GetImage(path);
+        Assert.Equal((uint)metadata.Width, image.Width);
+        Assert.Equal((uint)metadata.Height, image.Height);
+    }
+
+    [Fact]
+    public async Task DetailsLoaded_UsesOptimizedMetadataOnTheNextPass()
+    {
+        var texture = CreateTexture(Guid.NewGuid(), 11, 0, 0, false, false);
+        await texture.DetailsLoaded;
+        var replacement = new GTextureDetails { Width = 1024, Height = 1024 };
+
+        texture.UseOptimizedFile("optimized.ytd", replacement);
+
+        Assert.Same(replacement, await texture.DetailsLoaded);
     }
 
     private static GTexture CreateTexture(Guid id, int typeNumeric, int number, int txtNumber, bool hasSkin, bool isProp)

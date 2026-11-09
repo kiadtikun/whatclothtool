@@ -1,9 +1,7 @@
 using mjxClothTool.Helpers;
-using mjxClothTool.Models.Drawable;
 using mjxClothTool.Models.Texture;
 using CodeWalker.Utils;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -33,109 +31,139 @@ public partial class BulkOptimizeWindow : Window
             return;
         }
 
-        var drawables = MainWindow.AddonManager.Addons.SelectMany(addon => addon.Drawables).ToList();
-        var textures = drawables.SelectMany(drawable => drawable.Textures).Distinct().ToList();
-        var embedded = drawables
-            .SelectMany(drawable => drawable.Details?.EmbeddedTextures?.Values ??
-                Enumerable.Empty<GTextureEmbedded>())
-            .Where(texture => texture != null)
-            .Distinct()
-            .ToList();
-        var total = textures.Count + embedded.Count;
-        if (total == 0)
-        {
-            StatusText.Text = "No textures found in this project.";
-            return;
-        }
-
         _isApplying = true;
         ApplyButton.IsEnabled = false;
         CloseButton.IsEnabled = false;
         DownscaleCheckBox.IsEnabled = false;
         CompressionCheckBox.IsEnabled = false;
         MipmapComboBox.IsEnabled = false;
-        OptimizeProgress.Maximum = total;
+        StatusText.Text = "Reading texture details…";
+        OptimizeProgress.IsIndeterminate = true;
         OptimizeProgress.Value = 0;
 
         var applied = 0;
         var skipped = 0;
         var failed = 0;
         var processed = 0;
+        var total = 0;
         try
         {
-            var assetsPath = FileHelper.GetProjectAssetsPath();
-            foreach (var texture in textures)
+            var drawables = MainWindow.AddonManager.Addons.SelectMany(addon => addon.Drawables)
+                .Where(drawable => !drawable.IsReserved)
+                .ToList();
+            var textures = drawables.SelectMany(drawable => drawable.Textures).Distinct().ToList();
+            await Task.WhenAll(drawables.Select(drawable => drawable.DetailsLoaded));
+            var textureMetadata = await Task.WhenAll(textures.Select(texture => texture.DetailsLoaded));
+            var embedded = drawables
+                .SelectMany(drawable => drawable.Details?.EmbeddedTextures?.Values ??
+                    Enumerable.Empty<GTextureEmbedded>())
+                .Where(texture => texture != null && (texture.HasOriginalTexture || texture.HasReplacement))
+                .Distinct()
+                .ToList();
+
+            total = textures.Count + embedded.Count;
+            if (total == 0)
             {
-                StatusText.Text = $"Optimizing {processed + 1}/{total} — {texture.DisplayName}";
-                if (BulkTextureOptimizationHelper.TryCreateDetails(texture.TxtDetails, downscale, changeCompression, mipmapChoice, out var details))
-                {
-                    try
-                    {
-                        // Conversion is CPU-intensive; keep the progress window responsive.
-                        var bytes = await Task.Run(() => ImgHelper.Optimize(texture, false, details).GetAwaiter().GetResult());
-                        if (bytes == null) throw new InvalidDataException("Texture could not be converted.");
-
-                        var fileName = $"{Guid.NewGuid():N}.ytd";
-                        await File.WriteAllBytesAsync(Path.Combine(assetsPath, fileName), bytes);
-                        details.Name = texture.DisplayName;
-                        details.Type = texture.TxtDetails?.Type;
-                        details.Validate();
-                        texture.UseOptimizedFile(fileName, details);
-                        applied++;
-                    }
-                    catch (Exception ex)
-                    {
-                        failed++;
-                        LogHelper.Log($"Could not optimize {texture.DisplayName}: {ex.Message}", LogType.Warning);
-                    }
-                }
-                else skipped++;
-
-                OptimizeProgress.Value = ++processed;
-                await Task.Yield();
+                StatusText.Text = "No textures found in this project.";
+                return;
             }
 
-            foreach (var texture in embedded)
+            GTextureDetails PlanOptimization(GTextureDetails source, string name)
             {
-                StatusText.Text = $"Optimizing {processed + 1}/{total} — {texture.Details?.Name}";
-                if (BulkTextureOptimizationHelper.TryCreateDetails(texture.Details, downscale, changeCompression, mipmapChoice, out var details))
+                if (source is not { Width: > 0, Height: > 0 })
                 {
-                    try
-                    {
-                        if (!await texture.EnsureTextureDataLoadedAsync() || texture.DisplayTextureData == null)
-                            throw new InvalidDataException("Embedded texture data is unavailable.");
-
-                        var source = texture.DisplayTextureData;
-                        var dds = await Task.Run(() => DDSIO.GetDDSFile(source));
-                        var optimized = await Task.Run(() => ImgHelper.Optimize(dds, details).GetAwaiter().GetResult());
-                        if (optimized == null) throw new InvalidDataException("Embedded texture could not be converted.");
-                        var replacement = await Task.Run(() => DDSIO.GetTexture(optimized));
-                        replacement.Name = texture.Details.Name;
-
-                        var fileName = $"{Guid.NewGuid():N}.dds";
-                        await File.WriteAllBytesAsync(Path.Combine(assetsPath, fileName), optimized);
-                        var originalType = texture.Details.Type;
-                        texture.SetReplacementTexture(replacement, fileName);
-                        texture.Details.Type = originalType;
-                        texture.OptimizeDetails = null;
-                        texture.IsOptimizedDuringBuild = false;
-                        applied++;
-                    }
-                    catch (Exception ex)
-                    {
-                        failed++;
-                        LogHelper.Log($"Could not optimize embedded texture {texture.Details?.Name}: {ex.Message}", LogType.Warning);
-                    }
+                    failed++;
+                    LogHelper.Log($"Could not read texture details for {name}.", LogType.Warning);
+                    return null;
                 }
-                else skipped++;
+
+                if (BulkTextureOptimizationHelper.TryCreateDetails(source, downscale, changeCompression, mipmapChoice, out var details))
+                {
+                    details.Type = source.Type;
+                    return details;
+                }
+
+                skipped++;
+                return null;
+            }
+
+            var externalJobs = textures.Zip(textureMetadata, (texture, source) =>
+                    (Texture: texture, Details: PlanOptimization(source, texture.DisplayName)))
+                .Where(job => job.Details != null)
+                .ToList();
+            var embeddedJobs = embedded.Select(texture =>
+                    (Texture: texture, Details: PlanOptimization(texture.Details, texture.Details?.Name ?? texture.OriginalName)))
+                .Where(job => job.Details != null)
+                .ToList();
+
+            processed = skipped + failed;
+            OptimizeProgress.Maximum = total;
+            OptimizeProgress.Value = processed;
+            OptimizeProgress.IsIndeterminate = false;
+            if (processed == total)
+            {
+                ReportResult();
+                return;
+            }
+
+            var assetsPath = FileHelper.GetProjectAssetsPath();
+            foreach (var (texture, details) in externalJobs)
+            {
+                StatusText.Text = $"Optimizing {processed + 1}/{total} — {texture.DisplayName}";
+                try
+                {
+                    var bytes = await Task.Run(() => ImgHelper.Optimize(texture, false, details));
+                    if (bytes == null) throw new InvalidDataException("Texture could not be converted.");
+
+                    var fileName = $"{Guid.NewGuid():N}.ytd";
+                    await File.WriteAllBytesAsync(Path.Combine(assetsPath, fileName), bytes);
+                    details.Name = texture.DisplayName;
+                    details.Validate();
+                    texture.UseOptimizedFile(fileName, details);
+                    applied++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    LogHelper.Log($"Could not optimize {texture.DisplayName}: {ex.Message}", LogType.Warning);
+                }
 
                 OptimizeProgress.Value = ++processed;
-                await Task.Yield();
+            }
+
+            foreach (var (texture, details) in embeddedJobs)
+            {
+                StatusText.Text = $"Optimizing {processed + 1}/{total} — {texture.Details?.Name}";
+                try
+                {
+                    if (!await texture.EnsureTextureDataLoadedAsync() || texture.DisplayTextureData == null)
+                        throw new InvalidDataException("Embedded texture data is unavailable.");
+
+                    var source = texture.DisplayTextureData;
+                    var (optimized, replacement) = await Task.Run(async () =>
+                    {
+                        var optimized = await ImgHelper.Optimize(DDSIO.GetDDSFile(source), details);
+                        if (optimized == null) throw new InvalidDataException("Embedded texture could not be converted.");
+                        return (optimized, DDSIO.GetTexture(optimized));
+                    });
+                    replacement.Name = texture.Details.Name;
+
+                    var fileName = $"{Guid.NewGuid():N}.dds";
+                    await File.WriteAllBytesAsync(Path.Combine(assetsPath, fileName), optimized);
+                    texture.SetReplacementTexture(replacement, fileName);
+                    applied++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    LogHelper.Log($"Could not optimize embedded texture {texture.Details?.Name}: {ex.Message}", LogType.Warning);
+                }
+
+                OptimizeProgress.Value = ++processed;
             }
 
             if (applied > 0) SaveHelper.SetUnsavedChanges(true);
-            StatusText.Text = $"Optimized: {applied}; skipped: {skipped}; failed: {failed}.";
-            LogHelper.Log($"Optimized {applied} textures immediately; {skipped} skipped; {failed} failed.");
+            ReportResult();
         }
         catch (Exception ex)
         {
@@ -146,11 +174,18 @@ public partial class BulkOptimizeWindow : Window
         finally
         {
             _isApplying = false;
+            OptimizeProgress.IsIndeterminate = false;
             CloseButton.IsEnabled = true;
             ApplyButton.IsEnabled = true;
             DownscaleCheckBox.IsEnabled = true;
             CompressionCheckBox.IsEnabled = true;
             MipmapComboBox.IsEnabled = true;
+        }
+
+        void ReportResult()
+        {
+            StatusText.Text = $"Optimized: {applied}; skipped: {skipped}; failed: {failed}.";
+            LogHelper.Log($"Optimized {applied} textures immediately; {skipped} skipped; {failed} failed.");
         }
     }
 
