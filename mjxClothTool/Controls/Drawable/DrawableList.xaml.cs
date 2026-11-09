@@ -899,25 +899,6 @@ namespace mjxClothTool.Controls
                     }
                 }
             }
-            else if (e.Data.GetDataPresent(DataFormats.FileDrop))
-            {
-                var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
-                    files.Any(f => System.IO.Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase)));
-                e.Handled = true;
-            }
-            else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
-            {
-                var filter = DragDropHelper.CreateExtensionFilter(".ydd");
-                e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
-                    DragDropHelper.CheckForFilesInDescriptor(e.Data, filter));
-                e.Handled = true;
-            }
-            else
-            {
-                e.Effects = DragDropEffects.None;
-                e.Handled = true;
-            }
         }
 
         private static bool IsOverGroupHeader(object source)

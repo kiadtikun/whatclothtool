@@ -1,17 +1,37 @@
 using mjxClothTool.Helpers;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
 
 namespace mjxClothTool.Views
 {
+    [Flags]
+    internal enum DrawableImportGender
+    {
+        None = 0,
+        Female = 1,
+        Male = 2,
+        Both = Female | Male
+    }
+
     public class DrawableImportResolveItem : INotifyPropertyChanged
     {
+        internal static readonly IReadOnlyDictionary<string, DrawableImportGender> GenderOptions =
+            new Dictionary<string, DrawableImportGender>
+            {
+                ["Female"] = DrawableImportGender.Female,
+                ["Male"] = DrawableImportGender.Male,
+                ["Male/Female"] = DrawableImportGender.Both
+            };
+
         public event PropertyChangedEventHandler PropertyChanged;
 
         public string FilePath { get; }
@@ -33,18 +53,34 @@ namespace mjxClothTool.Views
             }
         }
 
-        public Enums.SexType? Gender { get; private set; }
+        private bool _isPreviewed;
+        public bool IsPreviewed
+        {
+            get => _isPreviewed;
+            internal set
+            {
+                if (_isPreviewed != value)
+                {
+                    _isPreviewed = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        internal DrawableImportGender Gender { get; private set; }
         public bool? IsProp { get; private set; }
         public int? DrawableType { get; private set; }
         public string DrawableTypeName { get; private set; }
 
-        public bool HasGender => Gender.HasValue;
+        public bool HasGender => Gender != DrawableImportGender.None;
         public bool HasDrawableType => DrawableType.HasValue;
         public bool IsResolved =>
             (!RequiresGender || HasGender) &&
             (!RequiresDrawableType || HasDrawableType);
 
-        public string GenderText => HasGender ? GetGenderDisplayName(Gender.Value) : "Gender not set";
+        public string GenderText => HasGender
+            ? GenderOptions.First(option => option.Value == Gender).Key
+            : "Gender not set";
         public string DrawableText => HasDrawableType
             ? $"{(IsProp == true ? "Prop" : "Component")} / {DrawableTypeName}"
             : "Properties not set";
@@ -57,7 +93,7 @@ namespace mjxClothTool.Views
             bool requiresDrawableType)
         {
             FilePath = filePath;
-            Gender = gender;
+            Gender = FromDetectedGender(gender);
             RequiresGender = requiresGender;
             RequiresDrawableType = requiresDrawableType;
 
@@ -67,7 +103,7 @@ namespace mjxClothTool.Views
             }
         }
 
-        public void SetGender(Enums.SexType gender)
+        internal void SetGender(DrawableImportGender gender)
         {
             Gender = gender;
             OnResolvedPropertiesChanged();
@@ -89,9 +125,14 @@ namespace mjxClothTool.Views
             OnResolvedPropertiesChanged();
         }
 
-        public static string GetGenderDisplayName(Enums.SexType gender)
+        internal static DrawableImportGender FromDetectedGender(Enums.SexType? gender)
         {
-            return gender == Enums.SexType.male ? "Male" : "Female";
+            return gender switch
+            {
+                Enums.SexType.female => DrawableImportGender.Female,
+                Enums.SexType.male => DrawableImportGender.Male,
+                _ => DrawableImportGender.None
+            };
         }
 
         private void OnResolvedPropertiesChanged()
@@ -117,11 +158,14 @@ namespace mjxClothTool.Views
         private readonly bool _showDrawableProperties;
         private readonly bool _reviewDroppedFiles;
         private bool _isApplyingBulkUpdate;
+        private CancellationTokenSource _previewLoad;
+        private DrawableImportResolveItem _previewedItem;
+        private double _lastPreviewMouseX;
 
-        public List<string> GenderTypes { get; set; } = ["Female", "Male"];
+        public IEnumerable<string> GenderTypes => DrawableImportResolveItem.GenderOptions.Keys;
         public List<string> AssetTypes { get; set; } = ["Component", "Prop"];
         public ObservableCollection<DrawableImportResolveItem> Items { get; set; } = [];
-        public Dictionary<string, Enums.SexType> SelectedGenders { get; private set; } = [];
+        internal Dictionary<string, DrawableImportGender> SelectedGenders { get; private set; } = [];
         public Dictionary<string, (bool IsProp, int DrawableType)> SelectedDrawableTypes { get; private set; } = [];
 
         public Visibility GenderTextVisibility => _showGender ? Visibility.Visible : Visibility.Collapsed;
@@ -152,7 +196,7 @@ namespace mjxClothTool.Views
             {
                 if (_reviewDroppedFiles)
                 {
-                    return "Review Gender and Drawable Component. Select rows and use Apply to change multiple files before import.";
+                    return "Click a file name to preview it. Check files to apply Gender or Drawable Component before import.";
                 }
 
                 var parts = new List<string>();
@@ -166,7 +210,7 @@ namespace mjxClothTool.Views
                     parts.Add("drawable properties");
                 }
 
-                return $"Click rows to check them, then apply {string.Join(" and ", parts)} to checked files. Resolved files are hidden unless Show resolved is enabled.";
+                return $"Click a file name to preview it. Check files to apply {string.Join(" and ", parts)}. Use Show resolved to see resolved files.";
             }
         }
         public string SelectionSummary => $"{Items.Count(x => x.IsSelected)} checked, {Items.Count(x => x.IsResolved)} of {Items.Count} resolved";
@@ -202,6 +246,11 @@ namespace mjxClothTool.Views
             }
         }
 
+        private DrawableImportGender PendingGender =>
+            SelectedGender != null && DrawableImportResolveItem.GenderOptions.TryGetValue(SelectedGender, out var gender)
+                ? gender
+                : DrawableImportGender.None;
+
         private string _selectedAssetType;
         public string SelectedAssetType
         {
@@ -221,7 +270,7 @@ namespace mjxClothTool.Views
 
         public bool IsProp => SelectedAssetType == "Prop";
         public bool IsAssetTypeSelected => DrawableTypes.Count > 0;
-        public bool IsGenderApplyEnabled => SelectedGender != null && GetControlTargetItems().Any(x => x.RequiresGender);
+        public bool IsGenderApplyEnabled => PendingGender != DrawableImportGender.None && GetControlTargetItems().Any(x => x.RequiresGender);
         public bool IsDrawableApplyEnabled => SelectedDrawableType != null && GetControlTargetItems().Any(x => x.RequiresDrawableType);
         public bool IsSubmitEnabled => Items.Count > 0 && (Items.All(x => x.IsResolved) || CanResolveSingleUnresolvedItem());
 
@@ -301,6 +350,118 @@ namespace mjxClothTool.Views
             }
         }
 
+        private async void Window_Loaded(object sender, RoutedEventArgs e)
+        {
+            await ShowPreviewAsync(VisibleItems.FirstOrDefault());
+        }
+
+        private async void PreviewItem_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is FrameworkElement { DataContext: DrawableImportResolveItem item })
+            {
+                await ShowPreviewAsync(item);
+            }
+        }
+
+        private async Task ShowPreviewAsync(DrawableImportResolveItem item)
+        {
+            _previewLoad?.Cancel();
+            _previewLoad = null;
+            if (_previewedItem != null)
+            {
+                _previewedItem.IsPreviewed = false;
+            }
+            _previewedItem = item;
+
+            PreviewTitle.Text = item == null ? "3D Preview" : $"3D Preview — {item.FileName}";
+            PreviewTitle.ToolTip = item?.FilePath;
+            PreviewModel.Content = null;
+            PreviewRotation.Angle = 0;
+            PreviewHint.Visibility = Visibility.Collapsed;
+            PreviewStatus.Visibility = Visibility.Visible;
+            if (item == null)
+            {
+                PreviewStatus.Text = Items.Count == 0 ? "No drawables to preview." : "Choose a file to preview.";
+                return;
+            }
+
+            item.IsPreviewed = true;
+            PreviewStatus.Text = "Loading preview…";
+            using var load = new CancellationTokenSource();
+            _previewLoad = load;
+            try
+            {
+                var isProp = item.IsProp ?? IsProp;
+                var model = await Task.Run(() => DrawableImportPreview.Load(item.FilePath, isProp, load.Token), load.Token);
+                if (load.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                PreviewModel.Content = model;
+                PreviewHint.Visibility = Visibility.Visible;
+                PreviewStatus.Visibility = Visibility.Collapsed;
+            }
+            catch (OperationCanceledException) when (load.IsCancellationRequested)
+            {
+            }
+            catch (Exception ex)
+            {
+                if (!load.IsCancellationRequested)
+                {
+                    PreviewStatus.Text = "Unable to preview this drawable.";
+                    LogHelper.Log($"Unable to preview '{item.FileName}': {ex.Message}", LogType.Warning);
+                }
+            }
+            finally
+            {
+                if (_previewLoad == load)
+                {
+                    _previewLoad = null;
+                }
+            }
+        }
+
+        protected override void OnClosed(EventArgs e)
+        {
+            _previewLoad?.Cancel();
+            base.OnClosed(e);
+        }
+
+        private void PreviewViewport_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            if (e.NewSize.Height > 0 && e.NewSize.Width > 0)
+            {
+                PreviewCamera.Width = 2.15 * Math.Max(1, e.NewSize.Width / e.NewSize.Height);
+            }
+        }
+
+        private void Preview_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            if (PreviewModel.Content != null && sender is UIElement surface && surface.CaptureMouse())
+            {
+                _lastPreviewMouseX = e.GetPosition(surface).X;
+            }
+        }
+
+        private void Preview_MouseMove(object sender, MouseEventArgs e)
+        {
+            if (sender is UIElement { IsMouseCaptured: true } surface && e.LeftButton == MouseButtonState.Pressed)
+            {
+                var x = e.GetPosition(surface).X;
+                PreviewRotation.Angle = (PreviewRotation.Angle + x - _lastPreviewMouseX) % 360;
+                _lastPreviewMouseX = x;
+            }
+        }
+
+        private void Preview_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is UIElement { IsMouseCaptured: true } surface)
+            {
+                surface.ReleaseMouseCapture();
+            }
+        }
+
         private void AssetType_IsUpdated(object sender, Controls.UpdatedEventArgs e)
         {
             var newValue = e.DependencyPropertyChangedEventArgs.NewValue;
@@ -316,12 +477,12 @@ namespace mjxClothTool.Views
 
         private void ApplyGender_MyBtnClickEvent(object sender, RoutedEventArgs e)
         {
-            if (SelectedGender == null)
+            var gender = PendingGender;
+            if (gender == DrawableImportGender.None)
             {
                 return;
             }
 
-            var gender = SelectedGender == "Male" ? Enums.SexType.male : Enums.SexType.female;
             var targetItems = GetControlTargetItems()
                 .Where(x => x.RequiresGender)
                 .ToList();
@@ -382,7 +543,7 @@ namespace mjxClothTool.Views
             {
                 SelectedGenders = Items.ToDictionary(
                     item => item.FilePath,
-                    item => item.Gender.GetValueOrDefault());
+                    item => item.Gender);
             }
 
             if (_showDrawableProperties)
@@ -405,7 +566,7 @@ namespace mjxClothTool.Views
             }
 
             var item = unresolvedItems[0];
-            var canResolveGender = !item.RequiresGender || item.HasGender || SelectedGender != null;
+            var canResolveGender = !item.RequiresGender || item.HasGender || PendingGender != DrawableImportGender.None;
             var canResolveDrawableType = !item.RequiresDrawableType || item.HasDrawableType || SelectedDrawableType != null;
 
             return canResolveGender && canResolveDrawableType;
@@ -420,10 +581,9 @@ namespace mjxClothTool.Views
 
             var item = Items.First(x => !x.IsResolved);
 
-            if (item.RequiresGender && !item.HasGender && SelectedGender != null)
+            if (item.RequiresGender && !item.HasGender)
             {
-                var gender = SelectedGender == "Male" ? Enums.SexType.male : Enums.SexType.female;
-                item.SetGender(gender);
+                item.SetGender(PendingGender);
             }
 
             if (item.RequiresDrawableType && !item.HasDrawableType && SelectedDrawableType != null)
@@ -474,11 +634,18 @@ namespace mjxClothTool.Views
             }
         }
 
-        private void ImportItem_Click(object sender, MouseButtonEventArgs e)
+        private async void RemoveItem_Click(object sender, RoutedEventArgs e)
         {
-            if (sender is FrameworkElement { DataContext: DrawableImportResolveItem item })
+            if (sender is not FrameworkElement { DataContext: DrawableImportResolveItem item } || !Items.Remove(item))
             {
-                item.IsSelected = !item.IsSelected;
+                return;
+            }
+
+            item.PropertyChanged -= ImportItem_PropertyChanged;
+            OnItemsChanged();
+            if (_previewedItem == item)
+            {
+                await ShowPreviewAsync(VisibleItems.FirstOrDefault());
             }
         }
 
@@ -542,7 +709,7 @@ namespace mjxClothTool.Views
             var item = targetItems[0];
             if (_showGender && item.HasGender)
             {
-                SelectedGender = DrawableImportResolveItem.GetGenderDisplayName(item.Gender.Value);
+                SelectedGender = item.GenderText;
             }
 
             if (_showDrawableProperties && item.HasDrawableType)

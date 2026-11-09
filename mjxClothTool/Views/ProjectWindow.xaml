@@ -135,8 +135,8 @@ mc:Ignorable="d">
                         <DataTemplate>
                             <Grid AllowDrop="True" 
                                   Drop="DrawablesGroupBox_Drop"
-                                  DragEnter="DrawablesGroupBox_DragEnter"
-                                  DragOver="DrawablesGroupBox_DragOver"
+                                  DragEnter="DrawablesGroupBox_DragEnterOrOver"
+                                  DragOver="DrawablesGroupBox_DragEnterOrOver"
                                   DragLeave="DrawablesGroupBox_DragLeave"
                                   Background="Transparent">
                                 

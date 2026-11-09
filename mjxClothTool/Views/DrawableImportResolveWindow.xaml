@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:c="clr-namespace:mjxClothTool.Controls"
         mc:Ignorable="d"
+        Loaded="Window_Loaded"
         Title="Resolve drawable import"
         ResizeMode="NoResize"
         Background="{DynamicResource Brush50}"
@@ -24,7 +25,6 @@
                 <Setter Property="BorderBrush" Value="{DynamicResource Brush200}"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="CornerRadius" Value="4"/>
-                <Setter Property="Cursor" Value="Hand"/>
                 <Style.Triggers>
                     <DataTrigger Binding="{Binding IsResolved}" Value="True">
                         <Setter Property="Background" Value="{DynamicResource Brush75}"/>
@@ -37,20 +37,32 @@
                     <Trigger Property="IsMouseOver" Value="True">
                         <Setter Property="BorderBrush" Value="{DynamicResource Brush500}"/>
                     </Trigger>
+                    <DataTrigger Binding="{Binding IsPreviewed}" Value="True">
+                        <Setter Property="BorderBrush" Value="{DynamicResource Brush800}"/>
+                    </DataTrigger>
                 </Style.Triggers>
             </Style>
         </Grid.Resources>
 
-        <StackPanel Grid.Row="0" Margin="15">
+        <Grid Grid.Row="0" Margin="15">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
             <TextBlock Text="{Binding HeaderText}" FontSize="16" Foreground="{DynamicResource Brush950}" FontWeight="Medium"/>
-            <TextBlock Text="{Binding HelpText}"
+            <TextBlock Grid.Row="1"
+                       Text="{Binding HelpText}"
                        FontSize="12"
                        Foreground="{DynamicResource Brush500}"
                        FontWeight="Light"
                        Margin="0,0,0,14"
                        TextWrapping="Wrap"/>
 
-            <Border BorderBrush="{DynamicResource Brush200}"
+            <Border Grid.Row="2"
+                    BorderBrush="{DynamicResource Brush200}"
                     BorderThickness="1"
                     Background="{DynamicResource Brush100}"
                     Margin="0,0,0,12">
@@ -83,33 +95,44 @@
                         </StackPanel>
                     </DockPanel>
                     <ScrollViewer Grid.Row="1"
-                                  MaxHeight="325"
+                                  MaxHeight="155"
                                   VerticalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding VisibleItems}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border Style="{StaticResource DrawableImportResolveRowBorder}"
-                                            MouseLeftButtonUp="ImportItem_Click">
+                                    <Border Style="{StaticResource DrawableImportResolveRowBorder}">
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="*"/>
                                                 <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                             </Grid.ColumnDefinitions>
                                             <CheckBox Grid.Column="0"
                                                       IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                      AutomationProperties.Name="{Binding FileName, StringFormat=Check {0} for Apply}"
                                                       VerticalAlignment="Center"
-                                                      IsHitTestVisible="False"
                                                       Margin="0,0,8,0"/>
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock Text="{Binding FileName}"
-                                                           Foreground="{DynamicResource Brush950}"
-                                                           FontWeight="SemiBold"/>
-                                                <TextBlock Text="{Binding FilePath}"
-                                                           Foreground="{DynamicResource Brush500}"
-                                                           FontSize="11"
-                                                           TextTrimming="CharacterEllipsis"/>
-                                            </StackPanel>
+                                            <Button Grid.Column="1"
+                                                    AutomationProperties.Name="{Binding FileName, StringFormat=Preview {0}}"
+                                                    ToolTip="{Binding FilePath}"
+                                                    Background="Transparent"
+                                                    BorderThickness="0"
+                                                    Padding="0"
+                                                    HorizontalContentAlignment="Stretch"
+                                                    Cursor="Hand"
+                                                    Click="PreviewItem_Click">
+                                                <StackPanel>
+                                                    <TextBlock Text="{Binding FileName}"
+                                                               Foreground="{DynamicResource Brush950}"
+                                                               FontWeight="SemiBold"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text="{Binding FilePath}"
+                                                               Foreground="{DynamicResource Brush500}"
+                                                               FontSize="11"
+                                                               TextTrimming="CharacterEllipsis"/>
+                                                </StackPanel>
+                                            </Button>
                                             <StackPanel Grid.Column="2"
                                                         Orientation="Horizontal"
                                                         VerticalAlignment="Center"
@@ -146,6 +169,14 @@
                                                     </TextBlock.Style>
                                                 </TextBlock>
                                             </StackPanel>
+                                            <Button Grid.Column="3"
+                                                    Content="Remove"
+                                                    AutomationProperties.Name="{Binding FileName, StringFormat=Remove {0}}"
+                                                    ToolTip="Remove from the import list"
+                                                    Margin="10,0,0,0"
+                                                    Padding="8,2"
+                                                    VerticalAlignment="Center"
+                                                    Click="RemoveItem_Click"/>
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
@@ -155,7 +186,7 @@
                 </Grid>
             </Border>
 
-            <StackPanel>
+            <StackPanel Grid.Row="3">
                 <Grid x:Name="GenderControls"
                       Margin="0,0,0,8"
                       Visibility="{Binding GenderControlsVisibility}">
@@ -215,7 +246,73 @@
                         MyBtnClickEvent="ApplyDrawable_MyBtnClickEvent"/>
                 </Grid>
             </StackPanel>
-        </StackPanel>
+
+            <Border Grid.Row="4"
+                    Margin="0,8,0,0"
+                    Padding="10"
+                    Background="{DynamicResource Brush100}"
+                    BorderBrush="{DynamicResource Brush200}"
+                    BorderThickness="1"
+                    CornerRadius="4">
+                <DockPanel>
+                    <TextBlock x:Name="PreviewTitle"
+                               DockPanel.Dock="Top"
+                               Text="3D Preview"
+                               FontWeight="SemiBold"
+                               Foreground="{DynamicResource Brush950}"
+                               Margin="0,0,0,6"
+                               TextTrimming="CharacterEllipsis"/>
+                    <Grid Background="{DynamicResource Brush75}"
+                          ClipToBounds="True"
+                          MouseLeftButtonDown="Preview_MouseLeftButtonDown"
+                          MouseMove="Preview_MouseMove"
+                          MouseLeftButtonUp="Preview_MouseLeftButtonUp">
+                        <Viewport3D x:Name="PreviewViewport"
+                                    IsHitTestVisible="False"
+                                    SizeChanged="PreviewViewport_SizeChanged">
+                            <Viewport3D.Camera>
+                                <OrthographicCamera x:Name="PreviewCamera"
+                                                    Position="0,4,0.5"
+                                                    LookDirection="0,-4,-0.5"
+                                                    UpDirection="0,0,1"/>
+                            </Viewport3D.Camera>
+                            <ModelVisual3D>
+                                <ModelVisual3D.Content>
+                                    <Model3DGroup>
+                                        <AmbientLight Color="#A0A0A0"/>
+                                        <DirectionalLight Color="#BFBFBF" Direction="-1,-2,-3"/>
+                                        <DirectionalLight Color="#505050" Direction="1,2,-1"/>
+                                    </Model3DGroup>
+                                </ModelVisual3D.Content>
+                            </ModelVisual3D>
+                            <ModelVisual3D x:Name="PreviewModel">
+                                <ModelVisual3D.Transform>
+                                    <RotateTransform3D>
+                                        <RotateTransform3D.Rotation>
+                                            <AxisAngleRotation3D x:Name="PreviewRotation" Axis="0,0,1" Angle="0"/>
+                                        </RotateTransform3D.Rotation>
+                                    </RotateTransform3D>
+                                </ModelVisual3D.Transform>
+                            </ModelVisual3D>
+                        </Viewport3D>
+                        <TextBlock x:Name="PreviewStatus"
+                                   Text="Choose a file to preview."
+                                   Foreground="{DynamicResource Brush600}"
+                                   IsHitTestVisible="False"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock x:Name="PreviewHint"
+                                   Text="Drag to rotate"
+                                   Foreground="{DynamicResource Brush600}"
+                                   Visibility="Collapsed"
+                                   IsHitTestVisible="False"
+                                   HorizontalAlignment="Right"
+                                   VerticalAlignment="Bottom"
+                                   Margin="6"/>
+                    </Grid>
+                </DockPanel>
+            </Border>
+        </Grid>
 
         <Grid Grid.Row="1" Margin="5">
             <c:CustomButton

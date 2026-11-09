@@ -47,4 +47,37 @@ public class DrawableFolderImportHelperTests
 
         Assert.Equal(new[] { path }, batches.SelectMany(batch => batch).ToArray());
     }
+
+    [Fact]
+    public void DroppedPathsAcceptFoldersAndYdds()
+    {
+        using var temp = new TestTempDirectory();
+        var folder = temp.FilePath("clothing");
+        Directory.CreateDirectory(folder);
+
+        Assert.True(DrawableFolderImportHelper.IsSupportedDropPath(folder));
+        Assert.True(DrawableFolderImportHelper.IsSupportedDropPath(temp.FilePath("task_001_u.YDD")));
+        Assert.False(DrawableFolderImportHelper.IsSupportedDropPath(temp.FilePath("texture.ytd")));
+    }
+
+    [Fact]
+    public void DroppedPathsExpandNestedFoldersAndDeduplicateExplicitFiles()
+    {
+        using var temp = new TestTempDirectory();
+        var folder = temp.FilePath("clothing.ydd");
+        var nested = temp.FilePath("clothing.ydd", "nested");
+        Directory.CreateDirectory(nested);
+
+        var rootFile = Path.Combine(folder, "task_002_u.ydd");
+        var nestedFile = Path.Combine(nested, "task_010_u.YDD");
+        var texture = Path.Combine(nested, "task_diff_010_a_uni.ytd");
+        File.WriteAllText(rootFile, "drawable");
+        File.WriteAllText(nestedFile, "drawable");
+        File.WriteAllText(texture, "texture");
+
+        var files = DrawableFolderImportHelper.GetDroppedDrawablePaths(
+            new[] { folder, nested, rootFile, texture });
+
+        Assert.Equal(new[] { rootFile, nestedFile }, files);
+    }
 }

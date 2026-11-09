@@ -8,6 +8,34 @@ namespace mjxClothTool.Helpers;
 
 public static class DrawableFolderImportHelper
 {
+    public static bool IsSupportedDropPath(string path) =>
+        IsDrawablePath(path) || Directory.Exists(path);
+
+    public static string[] GetDroppedDrawablePaths(IEnumerable<string> paths)
+    {
+        var files = new List<string>();
+        var folders = new List<string>();
+
+        foreach (var path in paths)
+        {
+            if (Directory.Exists(path))
+            {
+                folders.Add(path);
+            }
+            else if (IsDrawablePath(path))
+            {
+                files.Add(Path.GetFullPath(path));
+            }
+        }
+
+        return files.Concat(GetOrderedBatches(folders).SelectMany(batch => batch))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static bool IsDrawablePath(string path) =>
+        string.Equals(Path.GetExtension(path), ".ydd", StringComparison.OrdinalIgnoreCase);
+
     public static List<string[]> GetOrderedBatches(IEnumerable<string> folders)
     {
         var naturalComparer = StringComparer.Create(CultureInfo.InvariantCulture,

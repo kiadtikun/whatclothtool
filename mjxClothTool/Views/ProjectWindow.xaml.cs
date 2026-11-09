@@ -302,20 +302,14 @@ namespace mjxClothTool.Views
                 return;
             }
 
-            var maleFiles = resolution.Genders
-                .Where(x => x.Value == Enums.SexType.male)
-                .Select(x => x.Key)
-                .ToArray();
-            var femaleFiles = resolution.Genders
-                .Where(x => x.Value == Enums.SexType.female)
-                .Select(x => x.Key)
-                .ToArray();
+            var maleFiles = resolution.GetFilesForGender(DrawableImportGender.Male);
+            var femaleFiles = resolution.GetFilesForGender(DrawableImportGender.Female);
 
             ProgressHelper.Start();
 
             try
             {
-                LogHelper.Log($"Adding {files.Count} drawable file(s): {maleFiles.Length} male, {femaleFiles.Length} female.", LogType.Info);
+                LogHelper.Log($"Adding {resolution.Genders.Count} drawable file(s): {maleFiles.Length} male, {femaleFiles.Length} female.", LogType.Info);
 
                 if (maleFiles.Length > 0)
                 {
@@ -345,8 +339,11 @@ namespace mjxClothTool.Views
 
         private sealed class DrawableImportResolution
         {
-            public Dictionary<string, Enums.SexType> Genders { get; init; }
+            public Dictionary<string, DrawableImportGender> Genders { get; init; }
             public Dictionary<string, (bool IsProp, int DrawableType)> DrawableTypes { get; init; }
+
+            public string[] GetFilesForGender(DrawableImportGender gender) =>
+                Genders.Where(file => file.Value.HasFlag(gender)).Select(file => file.Key).ToArray();
         }
 
         private static string GetGenderDisplayName(Enums.SexType gender)
@@ -376,7 +373,7 @@ namespace mjxClothTool.Views
             {
                 return new DrawableImportResolution
                 {
-                    Genders = detectedGenders.ToDictionary(x => x.Key, x => x.Value.GetValueOrDefault()),
+                    Genders = detectedGenders.ToDictionary(x => x.Key, x => DrawableImportResolveItem.FromDetectedGender(x.Value)),
                     DrawableTypes = detectedDrawableTypes.ToDictionary(x => x.Key, x => x.Value.GetValueOrDefault())
                 };
             }
@@ -397,14 +394,15 @@ namespace mjxClothTool.Views
                 return null;
             }
 
+            var remainingFiles = window.Items.Select(item => item.FilePath);
             return new DrawableImportResolution
             {
                 Genders = needsGender
                     ? window.SelectedGenders
-                    : detectedGenders.ToDictionary(x => x.Key, x => x.Value.GetValueOrDefault()),
+                    : remainingFiles.ToDictionary(file => file, file => DrawableImportResolveItem.FromDetectedGender(detectedGenders[file])),
                 DrawableTypes = needsDrawableProperties
                     ? window.SelectedDrawableTypes
-                    : detectedDrawableTypes.ToDictionary(x => x.Key, x => x.Value.GetValueOrDefault())
+                    : remainingFiles.ToDictionary(file => file, file => detectedDrawableTypes[file].GetValueOrDefault())
             };
         }
 
@@ -614,61 +612,29 @@ namespace mjxClothTool.Views
 
         #region Drag and Drop for Drawables
 
-        private void DrawablesGroupBox_DragEnter(object sender, System.Windows.DragEventArgs e)
+        private static readonly Func<string, bool> DrawableDropFilter = DragDropHelper.CreateExtensionFilter(".ydd");
+
+        private static bool CanDropDrawables(System.Windows.IDataObject data, out string[] paths)
         {
-            try
+            paths = null;
+            if (data.GetDataPresent(WpfDataFormats.FileDrop))
             {
-                if (e.Data.GetDataPresent(WpfDataFormats.FileDrop))
-                {
-                    var files = (string[])e.Data.GetData(WpfDataFormats.FileDrop);
-                    var yddFiles = files.Where(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase)).ToArray();
-                    
-                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, yddFiles.Length > 0);
-                }
-                else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
-                {
-                    var filter = DragDropHelper.CreateExtensionFilter(".ydd");
-                    var hasYddFiles = DragDropHelper.CheckForFilesInDescriptor(e.Data, filter);
-                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, hasYddFiles);
-                }
-                else
-                {
-                    e.Effects = WpfDragDropEffects.None;
-                }
+                paths = data.GetData(WpfDataFormats.FileDrop) as string[];
+                return paths != null && paths.Any(DrawableFolderImportHelper.IsSupportedDropPath);
             }
-            catch (Exception ex)
-            {
-                LogHelper.Log($"Error in DragEnter: {ex.Message}", LogType.Error);
-                e.Effects = WpfDragDropEffects.None;
-            }
-            
-            e.Handled = true;
+
+            return DragDropHelper.CheckForFilesInDescriptor(data, DrawableDropFilter);
         }
 
-        private void DrawablesGroupBox_DragOver(object sender, System.Windows.DragEventArgs e)
+        private void DrawablesGroupBox_DragEnterOrOver(object sender, System.Windows.DragEventArgs e)
         {
             try
             {
-                if (e.Data.GetDataPresent(WpfDataFormats.FileDrop))
-                {
-                    var files = (string[])e.Data.GetData(WpfDataFormats.FileDrop);
-                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
-                        files.Any(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase)));
-                }
-                else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
-                {
-                    var filter = DragDropHelper.CreateExtensionFilter(".ydd");
-                    e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects,
-                        DragDropHelper.CheckForFilesInDescriptor(e.Data, filter));
-                }
-                else
-                {
-                    e.Effects = WpfDragDropEffects.None;
-                }
+                e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, CanDropDrawables(e.Data, out _));
             }
             catch (Exception ex)
             {
-                LogHelper.Log($"Error in DragOver: {ex.Message}", LogType.Error);
+                LogHelper.Log($"Error checking dropped items: {ex.Message}", LogType.Error);
                 e.Effects = WpfDragDropEffects.None;
             }
             
@@ -688,62 +654,35 @@ namespace mjxClothTool.Views
             e.Effects = WpfDragDropEffects.None;
             try
             {
-                bool hasSupportedFiles;
-                if (e.Data.GetDataPresent(WpfDataFormats.FileDrop))
-                {
-                    var droppedFiles = (string[])e.Data.GetData(WpfDataFormats.FileDrop);
-                    hasSupportedFiles = droppedFiles.Any(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase));
-                }
-                else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
-                {
-                    var filter = DragDropHelper.CreateExtensionFilter(".ydd");
-                    hasSupportedFiles = DragDropHelper.CheckForFilesInDescriptor(e.Data, filter);
-                }
-                else
-                {
-                    return;
-                }
-
-                e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, hasSupportedFiles);
+                e.Effects = DragDropHelper.GetExternalFileEffect(e.AllowedEffects, CanDropDrawables(e.Data, out var paths));
                 if (e.Effects != WpfDragDropEffects.Copy)
                     return;
 
-                List<string> filesToProcess = [];
-                
-                if (e.Data.GetDataPresent(WpfDataFormats.FileDrop))
+                var dropAddon = (sender as FrameworkElement)?.DataContext as Addon;
+                IReadOnlyList<string> yddFiles = paths != null
+                    ? await Task.Run(() => DrawableFolderImportHelper.GetDroppedDrawablePaths(paths))
+                    : await DragDropHelper.ExtractVirtualFilesAsync(e.Data, DrawableDropFilter);
+                if (yddFiles.Count == 0)
                 {
-                    var files = (string[])e.Data.GetData(WpfDataFormats.FileDrop);
-                    filesToProcess.AddRange(files);
-                }
-                else if (e.Data.GetDataPresent("FileGroupDescriptor") || e.Data.GetDataPresent("FileGroupDescriptorW"))
-                {
-                    var filter = DragDropHelper.CreateExtensionFilter(".ydd");
-                    var extractedFiles = await DragDropHelper.ExtractVirtualFilesAsync(e.Data, filter);
-                    if (extractedFiles.Count > 0)
+                    if (paths != null)
                     {
-                        filesToProcess.AddRange(extractedFiles);
+                        CustomMessageBox.Show("No .ydd files were found in the dropped folders.", "No Drawables Found",
+                            CustomMessageBox.CustomMessageBoxButtons.OKOnly,
+                            CustomMessageBox.CustomMessageBoxIcon.Warning);
                     }
                     else
                     {
-                        LogHelper.Log($"Could not extract files", LogType.Error);
-                        e.Handled = true;
-                        return;
+                        LogHelper.Log("Could not extract files", LogType.Error);
                     }
-                }
-                else
-                {
-                    e.Handled = true;
                     return;
                 }
 
-                var yddFiles = filesToProcess.Where(f => Path.GetExtension(f).Equals(".ydd", StringComparison.OrdinalIgnoreCase)).ToArray();
-                if (yddFiles.Length == 0)
+                var (accessibleFiles, inaccessibleFiles) = await Task.Run(() => DragDropHelper.ValidateFileAccess(yddFiles));
+                if (!IsLoaded ||
+                    (dropAddon != null && !MainWindow.AddonManager.Addons.Contains(dropAddon)))
                 {
-                    e.Handled = true;
                     return;
                 }
-
-                var (accessibleFiles, inaccessibleFiles) = DragDropHelper.ValidateFileAccess(yddFiles);
 
                 if (inaccessibleFiles.Count > 0)
                 {
@@ -758,7 +697,6 @@ namespace mjxClothTool.Views
 
                 if (accessibleFiles.Count == 0)
                 {
-                    e.Handled = true;
                     return;
                 }
 
@@ -789,8 +727,6 @@ namespace mjxClothTool.Views
                     CustomMessageBox.CustomMessageBoxButtons.OKOnly,
                     CustomMessageBox.CustomMessageBoxIcon.Error);
             }
-            
-            e.Handled = true;
         }
 
         private async Task SelectAndRevealImportedDrawablesAsync(IReadOnlyCollection<GDrawable> importedDrawables)
