@@ -1,4 +1,5 @@
 using mjxClothTool.Helpers;
+using mjxClothTool.Models.Drawable;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -37,7 +38,10 @@ namespace mjxClothTool.Views
         public event PropertyChangedEventHandler PropertyChanged;
 
         public string FilePath { get; }
-        public string FileName => Path.GetFileName(FilePath);
+        public string FileName => ProjectDrawable?.Name ?? Path.GetFileName(FilePath);
+        internal GDrawable ProjectDrawable { get; }
+        internal bool HasTypeChange => ProjectDrawable != null &&
+            (ProjectDrawable.IsProp != IsProp || ProjectDrawable.TypeNumeric != DrawableType);
         public bool RequiresGender { get; }
         public bool RequiresDrawableType { get; }
 
@@ -78,9 +82,11 @@ namespace mjxClothTool.Views
             Enums.SexType? gender,
             (bool IsProp, int DrawableType)? drawableType,
             bool requiresGender,
-            bool requiresDrawableType)
+            bool requiresDrawableType,
+            GDrawable projectDrawable = null)
         {
             FilePath = filePath;
+            ProjectDrawable = projectDrawable;
             Gender = FromDetectedGender(gender);
             RequiresGender = requiresGender;
             RequiresDrawableType = requiresDrawableType;
@@ -145,6 +151,7 @@ namespace mjxClothTool.Views
         private readonly bool _showGender;
         private readonly bool _showDrawableProperties;
         private readonly bool _reviewDroppedFiles;
+        private readonly bool _editProjectDrawables;
         private bool _isApplyingBulkUpdate;
         private CancellationTokenSource _previewLoad;
         private DrawableImportResolveItem _previewedItem;
@@ -156,15 +163,21 @@ namespace mjxClothTool.Views
         internal Dictionary<string, DrawableImportGender> SelectedGenders { get; private set; } = [];
         public Dictionary<string, (bool IsProp, int DrawableType)> SelectedDrawableTypes { get; private set; } = [];
 
-        public Visibility GenderTextVisibility => _showGender ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility GenderTextVisibility => _showGender || _editProjectDrawables ? Visibility.Visible : Visibility.Collapsed;
         public Visibility DrawableTextVisibility => _showDrawableProperties ? Visibility.Visible : Visibility.Collapsed;
         public Visibility GenderControlsVisibility => _showGender ? Visibility.Visible : Visibility.Collapsed;
         public Visibility DrawableControlsVisibility => _showDrawableProperties ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility ImportActionsVisibility => _editProjectDrawables ? Visibility.Collapsed : Visibility.Visible;
+        public string SubmitLabel => _editProjectDrawables ? "Save changes" : "Continue";
+        public string ListName => _editProjectDrawables ? "Selected project drawables" : "Drawables to import";
         public ICollectionView VisibleItems { get; }
         public string HeaderText
         {
             get
             {
+                if (_editProjectDrawables)
+                    return "Change drawable type";
+
                 if (_reviewDroppedFiles)
                 {
                     return "Review dropped drawable files";
@@ -180,6 +193,9 @@ namespace mjxClothTool.Views
         {
             get
             {
+                if (_editProjectDrawables)
+                    return "Click a row to preview it. Hold Shift to select a range, then apply a new type to the selection.";
+
                 if (_reviewDroppedFiles)
                 {
                     return "Click a row to preview it. Hold Shift and click another row to select a range for Apply.";
@@ -199,7 +215,9 @@ namespace mjxClothTool.Views
                 return $"Click a row to preview it. Hold Shift and click another row to select a range, then apply {string.Join(" and ", parts)}.";
             }
         }
-        public string SelectionSummary => $"{ImportList.SelectedItems.Count} selected, {Items.Count(x => x.IsResolved)} of {Items.Count} resolved";
+        public string SelectionSummary => _editProjectDrawables
+            ? $"{ImportList.SelectedItems.Count} selected, {Items.Count(item => item.HasTypeChange)} with changes"
+            : $"{ImportList.SelectedItems.Count} selected, {Items.Count(x => x.IsResolved)} of {Items.Count} resolved";
 
         private bool _showResolvedItems;
         public bool ShowResolvedItems
@@ -258,7 +276,13 @@ namespace mjxClothTool.Views
         public bool IsAssetTypeSelected => DrawableTypes.Count > 0;
         public bool IsGenderApplyEnabled => PendingGender != DrawableImportGender.None && GetControlTargetItems().Any(x => x.RequiresGender);
         public bool IsDrawableApplyEnabled => SelectedDrawableType != null && GetControlTargetItems().Any(x => x.RequiresDrawableType);
-        public bool IsSubmitEnabled => Items.Count > 0 && (Items.All(x => x.IsResolved) || CanResolveSingleUnresolvedItem());
+        public bool IsSubmitEnabled => _editProjectDrawables
+            ? Items.Any(item => item.HasTypeChange)
+            : Items.Count > 0 && (Items.All(x => x.IsResolved) || CanResolveSingleUnresolvedItem());
+
+        internal IEnumerable<(GDrawable Drawable, bool IsProp, int Type)> ProjectTypeChanges =>
+            Items.Where(item => item.HasTypeChange)
+                .Select(item => (item.ProjectDrawable, item.IsProp.Value, item.DrawableType.Value));
 
         private List<string> _drawableTypes = [];
         public List<string> DrawableTypes
@@ -338,9 +362,31 @@ namespace mjxClothTool.Views
             }
         }
 
+        internal DrawableImportResolveWindow(IReadOnlyList<GDrawable> drawables)
+        {
+            InitializeComponent();
+            _editProjectDrawables = true;
+            _showDrawableProperties = true;
+            _showResolvedItems = true;
+            Title = "Change drawable type";
+
+            foreach (var drawable in drawables)
+            {
+                Items.Add(new DrawableImportResolveItem(drawable.FullFilePath, drawable.Sex,
+                    (drawable.IsProp, drawable.TypeNumeric), false, true, drawable));
+            }
+
+            VisibleItems = new ListCollectionView(Items);
+            DataContext = this;
+            SelectedAssetType = drawables.FirstOrDefault()?.IsProp == true ? "Prop" : "Component";
+            SetDrawableTypeOptions(SelectedAssetType);
+        }
+
         private async void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            if (ImportList.Items.Count > 0)
+            if (_editProjectDrawables)
+                ImportList.SelectAll();
+            else if (ImportList.Items.Count > 0)
             {
                 ImportList.SelectedIndex = 0;
             }
@@ -385,8 +431,11 @@ namespace mjxClothTool.Views
             _previewLoad = load;
             try
             {
-                var isProp = item.IsProp ?? IsProp;
-                var model = await Task.Run(() => DrawableImportPreview.Load(item.FilePath, isProp, load.Token), load.Token);
+                var isProp = item.ProjectDrawable?.IsProp ?? item.IsProp ?? IsProp;
+                var texture = item.ProjectDrawable?.Textures
+                    .FirstOrDefault(texture => Path.GetExtension(texture.FilePath)?.Equals(".ytd", StringComparison.OrdinalIgnoreCase) == true);
+                var texturePath = texture?.FullFilePath;
+                var model = await Task.Run(() => DrawableImportPreview.Load(item.FilePath, isProp, load.Token, texturePath), load.Token);
                 if (load.IsCancellationRequested)
                 {
                     return;
@@ -502,7 +551,7 @@ namespace mjxClothTool.Views
                 foreach (var item in items)
                 {
                     apply(item);
-                    if (item.IsResolved)
+                    if (!_editProjectDrawables && item.IsResolved)
                     {
                         ImportList.SelectedItems.Remove(item);
                     }
@@ -523,6 +572,13 @@ namespace mjxClothTool.Views
 
         private void Select_MyBtnClickEvent(object sender, RoutedEventArgs e)
         {
+            if (_editProjectDrawables)
+            {
+                if (IsSubmitEnabled)
+                    DialogResult = true;
+                return;
+            }
+
             ResolveSingleUnresolvedItemIfPossible();
 
             if (!IsSubmitEnabled)

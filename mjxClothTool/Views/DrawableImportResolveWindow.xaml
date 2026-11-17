@@ -80,6 +80,7 @@
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                             <CheckBox Content="Show resolved"
                                       IsChecked="{Binding ShowResolvedItems, Mode=TwoWay}"
+                                      Visibility="{Binding ImportActionsVisibility}"
                                       VerticalAlignment="Center"
                                       Margin="4,0,10,0"
                                       Foreground="{DynamicResource Brush700}"/>
@@ -101,7 +102,7 @@
                              SelectionMode="Extended"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="ImportList_SelectionChanged"
-                             AutomationProperties.Name="Drawables to import"
+                             AutomationProperties.Name="{Binding ListName}"
                              Background="Transparent"
                              BorderThickness="0"
                              ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -179,6 +180,7 @@
                                         </StackPanel>
                                         <Button Grid.Column="2"
                                                 Content="Remove"
+                                                Visibility="{Binding DataContext.ImportActionsVisibility, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 AutomationProperties.Name="{Binding FileName, StringFormat=Remove {0}}"
                                                 ToolTip="Remove from the import list"
                                                 Margin="10,0,0,0"
@@ -349,7 +351,7 @@
                 HorizontalAlignment="Right"
                 CornerRadius="5"
                 Width="150"
-                Label="Continue"
+                Label="{Binding SubmitLabel}"
                 IsEnabled="{Binding IsSubmitEnabled}"
                 MyBtnClickEvent="Select_MyBtnClickEvent"/>
         </Grid>

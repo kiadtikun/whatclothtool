@@ -658,6 +658,21 @@ public class GDrawable : INotifyPropertyChanged
         SetDrawableName();
     }
 
+    internal void ApplyDrawableType(string newType, bool isProp)
+    {
+        if (IsProp != isProp)
+        {
+            IsProp = isProp;
+            foreach (var texture in Textures)
+                texture.IsProp = isProp;
+        }
+
+        ApplyDrawableType(newType);
+        OnPropertyChanged(nameof(IsProp));
+        OnPropertyChanged(nameof(IsComponent));
+        OnPropertyChanged(nameof(AvailableTypes));
+    }
+
     public void ChangeDrawableSex(string newSex)
     {
         // transform new sex to enum

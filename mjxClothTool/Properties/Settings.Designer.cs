@@ -157,7 +157,7 @@ namespace mjxClothTool.Properties {
 
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
-        [global::System.Configuration.DefaultSettingValueAttribute("255")]
+        [global::System.Configuration.DefaultSettingValueAttribute("254")]
         public int MaxDrawablesPerAddon {
             get {
                 return ((int)(this["MaxDrawablesPerAddon"]));

@@ -485,6 +485,29 @@ namespace mjxClothTool.Controls
             }
         }
 
+        private async void ChangeDrawableType_Click(object sender, RoutedEventArgs e)
+        {
+            var manager = MainWindow.AddonManager;
+            var addon = manager.SelectedAddon;
+            var selected = MyListBox.SelectedItems.OfType<GDrawable>()
+                .Where(drawable => !drawable.IsReserved)
+                .ToList();
+            if (addon == null || selected.Count == 0)
+                return;
+
+            var dialog = new DrawableImportResolveWindow(selected) { Owner = Window.GetWindow(this) };
+            if (dialog.ShowDialog() != true)
+                return;
+
+            var changed = manager.ChangeDrawableTypes(addon, dialog.ProjectTypeChanges);
+            if (changed.Count == 0)
+                return;
+
+            SaveHelper.SetUnsavedChanges(true);
+            if (MainWindow.Instance.MainWindowContentControl.Content is ProjectWindow project)
+                await project.SelectAndRevealDrawablesAsync(changed);
+        }
+
         private void MoveMenuItem_Click(object sender, RoutedEventArgs e)
         {
             MenuItem menuItem = sender as MenuItem;

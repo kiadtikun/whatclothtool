@@ -714,7 +714,7 @@ namespace mjxClothTool.Views
 
                 if (importedDrawables.Count > 0)
                 {
-                    await SelectAndRevealImportedDrawablesAsync(importedDrawables);
+                    await SelectAndRevealDrawablesAsync(importedDrawables);
                 }
             }
             catch (Exception ex)
@@ -729,10 +729,10 @@ namespace mjxClothTool.Views
             }
         }
 
-        private async Task SelectAndRevealImportedDrawablesAsync(IReadOnlyCollection<GDrawable> importedDrawables)
+        internal async Task SelectAndRevealDrawablesAsync(IReadOnlyCollection<GDrawable> drawables)
         {
             var targetAddon = MainWindow.AddonManager.Addons
-                .FirstOrDefault(addon => addon.Drawables.Any(importedDrawables.Contains));
+                .FirstOrDefault(addon => addon.Drawables.Any(drawables.Contains));
 
             if (targetAddon == null)
             {
@@ -742,18 +742,18 @@ namespace mjxClothTool.Views
             MainWindow.AddonManager.SelectedAddon = targetAddon;
             Addon = targetAddon;
 
-            // Let the selected tab create its DataTemplate before finding its DrawableList.
-            await Dispatcher.InvokeAsync(() => AddonTabControl.UpdateLayout(),
-                System.Windows.Threading.DispatcherPriority.Loaded);
-
-            var importedInTargetAddon = importedDrawables
+            var itemsInTargetAddon = drawables
                 .Where(targetAddon.Drawables.Contains)
                 .ToList();
 
-            var drawableList = FindVisualChildren<DrawableList>(AddonTabControl)
-                .FirstOrDefault(list => list.ItemsSource == targetAddon.Drawables);
-
-            drawableList?.SelectAndReveal(importedInTargetAddon);
+            // Let the selected tab create its DataTemplate before finding its DrawableList.
+            await Dispatcher.InvokeAsync(() =>
+            {
+                AddonTabControl.UpdateLayout();
+                var drawableList = FindVisualChildren<DrawableList>(AddonTabControl)
+                    .FirstOrDefault(list => list.ItemsSource == targetAddon.Drawables);
+                drawableList?.SelectAndReveal(itemsInTargetAddon);
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         private static IEnumerable<T> FindVisualChildren<T>(DependencyObject parent)

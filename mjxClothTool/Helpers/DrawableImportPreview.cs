@@ -15,7 +15,7 @@ namespace mjxClothTool.Helpers;
 
 internal static class DrawableImportPreview
 {
-    public static Model3DGroup Load(string filePath, bool isProp, CancellationToken cancellationToken)
+    public static Model3DGroup Load(string filePath, bool isProp, CancellationToken cancellationToken, string texturePath = null)
     {
         var ydd = new YddFile();
         ydd.Load(File.ReadAllBytes(filePath));
@@ -30,7 +30,7 @@ internal static class DrawableImportPreview
             throw new InvalidDataException("The drawable contains no models.");
         }
 
-        var externalTextures = LoadMatchingTextures(filePath, isProp);
+        var externalTextures = LoadMatchingTextures(filePath, isProp, texturePath);
         var embeddedTextures = drawable.ShaderGroup?.TextureDictionary;
         var materials = new Dictionary<Texture, DiffuseMaterial>();
         var fallbackMaterial = new DiffuseMaterial(Brushes.LightSlateGray);
@@ -131,11 +131,12 @@ internal static class DrawableImportPreview
         return mesh;
     }
 
-    private static TextureDictionary LoadMatchingTextures(string filePath, bool isProp)
+    private static TextureDictionary LoadMatchingTextures(string filePath, bool isProp, string texturePath)
     {
         try
         {
-            var texturePath = FileHelper.FindMatchingTextures(filePath, null, isProp).FirstOrDefault();
+            if (!File.Exists(texturePath))
+                texturePath = FileHelper.FindMatchingTextures(filePath, null, isProp).FirstOrDefault();
             return texturePath == null ? null : CWHelper.GetYtdFile(texturePath).TextureDict;
         }
         catch (Exception ex)

@@ -824,6 +824,54 @@ namespace mjxClothTool.Models
             }
         }
 
+        public IReadOnlyList<GDrawable> ChangeDrawableTypes(Addon source,
+            IEnumerable<(GDrawable Drawable, bool IsProp, int Type)> changes)
+        {
+            lock (AddonsLock)
+            {
+                if (!Addons.Contains(source))
+                    throw new ArgumentException("The source addon is no longer in the project.", nameof(source));
+
+                // Prepare all replacements before editing either addon collection.
+                var replacements = changes
+                    .Where(change => !change.Drawable.IsReserved &&
+                        (change.Drawable.IsProp != change.IsProp || change.Drawable.TypeNumeric != change.Type))
+                    .Select(change =>
+                    {
+                        var drawable = change.Drawable;
+                        int index = source.Drawables.IndexOf(drawable);
+                        var typeName = EnumHelper.GetName(change.Type, change.IsProp);
+                        if (index < 0 || typeName == null)
+                            throw new ArgumentException("A selected drawable or its target type is invalid.", nameof(changes));
+
+                        var reserved = new GDrawableReserved(drawable.Sex, drawable.IsProp, drawable.TypeNumeric, drawable.Number)
+                        {
+                            Group = string.IsNullOrWhiteSpace(drawable.Group) ? drawable.TypeName : drawable.Group,
+                            Order = drawable.Order
+                        };
+                        return (drawable, change.IsProp, typeName, index, reserved);
+                    })
+                    .ToList();
+
+                if (replacements.Select(change => change.index).Distinct().Count() != replacements.Count)
+                    throw new ArgumentException("Each drawable can be changed once per batch.", nameof(changes));
+
+                foreach (var change in replacements)
+                {
+                    var drawable = change.drawable;
+                    DuplicateDetector.UnregisterDrawable(drawable);
+                    source.Drawables[change.index] = change.reserved;
+                    drawable.ApplyDrawableType(change.typeName, change.IsProp);
+                    AddDrawableInternal(drawable, markUnsaved: false);
+                }
+
+                if (replacements.Count > 0)
+                    Addons.Sort();
+
+                return replacements.Select(change => change.drawable).ToList();
+            }
+        }
+
         /// <summary>
         /// Internal method to add a drawable without duplicate checking.
         /// Used by batch processing after duplicates have already been handled.
