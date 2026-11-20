@@ -211,11 +211,11 @@ namespace mjxClothTool.Views
             get
             {
                 if (_editProjectDrawables)
-                    return "Tick items or hold Shift and click rows to select a range. Click a row to preview it, then apply a gender or type.";
+                    return "Click a row to preview. Shift+click selects a range. Ctrl+click unticks a row. Apply changes to the ticked items.";
 
                 if (_reviewDroppedFiles)
                 {
-                    return "Tick items to apply changes. Click a row to preview it. Hold Shift and click another row to select a range.";
+                    return "Click a row to preview. Shift+click selects a range. Ctrl+click unticks a row. Apply changes to the ticked items.";
                 }
 
                 var parts = new List<string>();
@@ -229,7 +229,7 @@ namespace mjxClothTool.Views
                     parts.Add("drawable properties");
                 }
 
-                return $"Tick items or hold Shift and click rows to select a range, then apply {string.Join(" and ", parts)}. Click a row to preview it.";
+                return $"Click a row to preview. Shift+click selects a range. Ctrl+click unticks a row. Apply {string.Join(" and ", parts)} to the ticked items.";
             }
         }
         public string SelectionSummary => _editProjectDrawables
@@ -712,12 +712,12 @@ namespace mjxClothTool.Views
             ImportList.UnselectAll();
         }
 
-        private void SetCheckedItems(bool isChecked)
+        private void SetCheckedItems(bool isChecked, IEnumerable<DrawableImportResolveItem> items = null)
         {
             _isApplyingBulkUpdate = true;
             try
             {
-                var targets = isChecked ? ImportList.Items.Cast<DrawableImportResolveItem>() : Items;
+                var targets = items ?? (isChecked ? ImportList.Items.Cast<DrawableImportResolveItem>() : Items);
                 foreach (var item in targets)
                     item.IsChecked = isChecked;
             }
@@ -731,22 +731,15 @@ namespace mjxClothTool.Views
 
         private void ImportList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (!_isApplyingBulkUpdate &&
-                (ImportList.SelectedItems.Count > 1 || (Keyboard.Modifiers & ModifierKeys.Shift) != 0))
-            {
-                _isApplyingBulkUpdate = true;
-                try
-                {
-                    foreach (DrawableImportResolveItem item in ImportList.SelectedItems)
-                        item.IsChecked = true;
-                }
-                finally
-                {
-                    _isApplyingBulkUpdate = false;
-                }
-                SyncControlSelectionsFromSingleTarget();
-                NotifySelectionChanged();
-            }
+            if (_isApplyingBulkUpdate)
+                return;
+
+            var modifiers = Keyboard.Modifiers;
+            if ((modifiers & ModifierKeys.Shift) != 0)
+                SetCheckedItems(true, ImportList.SelectedItems.Cast<DrawableImportResolveItem>());
+            else if ((modifiers & ModifierKeys.Control) != 0)
+                SetCheckedItems(false, e.AddedItems.Cast<DrawableImportResolveItem>()
+                    .Concat(e.RemovedItems.Cast<DrawableImportResolveItem>()));
         }
 
         private async void RemoveItem_Click(object sender, RoutedEventArgs e)
