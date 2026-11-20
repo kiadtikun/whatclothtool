@@ -10,6 +10,10 @@ namespace mjxClothTool.Helpers;
 internal static class RigidPropConverter
 {
     internal const string NeedsPieces = "This model uses several bones. Select the mesh pieces to export.";
+    private const uint PedShaderName = 886638433;
+    private const uint PedShaderFile = 540746503;
+    private const uint PedDefaultCutoutShaderFile = 3176173383;
+    private const uint RigidPedVertexFlags = 0x40F9;
     internal record Result(string Name, byte[] Data, string SourceBinding);
 
     internal static string Export(Result prop, string[] textures, string parent)
@@ -295,7 +299,7 @@ internal static class RigidPropConverter
 
     private static bool Finite(Vector3 v) => float.IsFinite(v.X) && float.IsFinite(v.Y) && float.IsFinite(v.Z);
 
-    private static void RewriteVertices(DrawableGeometry geometry, Matrix transform, ref Vector3 min, ref Vector3 max)
+    internal static void RewriteVertices(DrawableGeometry geometry, Matrix transform, ref Vector3 min, ref Vector3 max)
     {
         var src = geometry.VertexData;
         var info = src?.Info;
@@ -303,17 +307,46 @@ internal static class RigidPropConverter
             (info.Flags & 1) == 0 || info.Stride != src.VertexStride ||
             src.VertexBytes.Length != checked(src.VertexCount * src.VertexStride))
             throw new InvalidDataException("Unsupported vertex layout. Use a standard GTA V rigid accessory mesh.");
-        var layout = new VertexDeclaration { Flags = info.Flags & ~6u, Types = info.Types };
+        var shader = geometry.Shader as ShaderFX;
+        bool rigidPed = shader != null && (uint)shader.FileName == PedDefaultCutoutShaderFile;
+        uint flags = info.Flags & ~6u;
+        if (rigidPed)
+        {
+            flags = RigidPedVertexFlags;
+            shader.Name = new MetaHash(PedShaderName);
+            shader.FileName = new MetaHash(PedShaderFile);
+        }
+        var layout = new VertexDeclaration { Flags = flags, Types = info.Types };
         layout.UpdateCountAndStride();
         var dest = new VertexData { Info = layout, VertexCount = src.VertexCount, VertexStride = layout.Stride,
             VertexType = (VertexType)layout.Flags, VertexBytes = new byte[checked(src.VertexCount * layout.Stride)] };
-        // Position is first, then the two optional skin fields. UVs, colors and tangent W retain their bytes.
-        int tail = info.GetComponentOffset((int)VertexSemantics.Normal);
         var normalMatrix = Matrix.Transpose(Matrix.Invert(transform));
         for (int n = 0; n < src.VertexCount; n++)
         {
-            Buffer.BlockCopy(src.VertexBytes, n * src.VertexStride + tail, dest.VertexBytes,
-                n * dest.VertexStride + 12, dest.VertexStride - 12);
+            if (rigidPed)
+            {
+                foreach (int channel in new[] { (int)VertexSemantics.Colour0, (int)VertexSemantics.Colour1, (int)VertexSemantics.TexCoord0 })
+                {
+                    if ((info.Flags & (1u << channel)) == 0) continue;
+                    int size = VertexComponentTypes.GetSizeInBytes(info.GetComponentType(channel));
+                    Buffer.BlockCopy(src.VertexBytes, n * src.VertexStride + info.GetComponentOffset(channel),
+                        dest.VertexBytes, n * dest.VertexStride + layout.GetComponentOffset(channel), size);
+                }
+                foreach (int channel in new[] { (int)VertexSemantics.Colour0, (int)VertexSemantics.Colour1 })
+                    if ((info.Flags & (1u << channel)) == 0)
+                        dest.SetColour(n, channel, new Color(255, 255, 255, 255));
+                var uv = (info.Flags & (1u << (int)VertexSemantics.TexCoord0)) == 0
+                    ? Vector2.Zero : src.GetVector2(n, (int)VertexSemantics.TexCoord0);
+                dest.SetVector2(n, (int)VertexSemantics.TexCoord0, uv);
+                dest.SetVector2(n, (int)VertexSemantics.TexCoord1, uv);
+            }
+            else
+            {
+                // Position is first, then the two optional skin fields. Preserve the remaining channels exactly.
+                int tail = info.GetComponentOffset((int)VertexSemantics.Normal);
+                Buffer.BlockCopy(src.VertexBytes, n * src.VertexStride + tail, dest.VertexBytes,
+                    n * dest.VertexStride + 12, dest.VertexStride - 12);
+            }
             var pos = Vector3.TransformCoordinate(src.GetVector3(n, 0), transform);
             if (!Finite(pos)) throw new InvalidDataException("Non-finite coordinates in converted model.");
             dest.SetVector3(n, 0, pos);
@@ -321,12 +354,20 @@ internal static class RigidPropConverter
             max = Vector3.Max(max, pos);
             foreach (int channel in DirectionChannels)
             {
-                if ((layout.Flags & (1u << channel)) == 0) continue;
+                if ((info.Flags & (1u << channel)) == 0) continue;
                 var dir = Vector3.TransformNormal(src.GetVector3(n, channel),
                     channel == (int)VertexSemantics.Normal ? normalMatrix : transform);
                 dir.Normalize();
                 if (!Finite(dir)) throw new InvalidDataException("Invalid vertex direction.");
                 dest.SetVector3(n, channel, dir);
+            }
+            if (rigidPed)
+            {
+                var normal = dest.GetVector3(n, (int)VertexSemantics.Normal);
+                var axis = Math.Abs(normal.Z) < 0.9f ? Vector3.UnitZ : Vector3.UnitY;
+                var tangent = Vector3.Cross(axis, normal);
+                tangent.Normalize();
+                dest.SetVector4(n, (int)VertexSemantics.Tangent, new Vector4(tangent, 1));
             }
         }
         var buffer = geometry.VertexBuffer;

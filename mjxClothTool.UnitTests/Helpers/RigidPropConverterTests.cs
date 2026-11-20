@@ -81,6 +81,34 @@ public class RigidPropConverterTests
     }
 
     [Fact]
+    public void ClothingCutoutGeometryBecomesACompleteRigidPedPropGeometry()
+    {
+        using var dir = new TestTempDirectory();
+        var path = WriteSource(dir, Model);
+        var source = new YddFile();
+        source.Load(File.ReadAllBytes(path));
+        var geometry = source.Drawables[0].DrawableModels.High[0].Geometries[0];
+        geometry.Shader = new ShaderFX
+        {
+            Name = new MetaHash(695944937),
+            FileName = new MetaHash(3176173383)
+        };
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+
+        RigidPropConverter.RewriteVertices(geometry, Matrix.Identity, ref min, ref max);
+        var convertedShader = Assert.IsType<ShaderFX>(geometry.Shader);
+
+        Assert.Equal(3, geometry.VertexData.VertexCount);
+        Assert.Equal(0x40F9u, geometry.VertexData.Info.Flags);
+        Assert.Equal(0u, geometry.VertexData.Info.Flags & 6u);
+        Assert.NotEqual(0u, geometry.VertexData.Info.Flags & (1u << (int)VertexSemantics.TexCoord1));
+        Assert.NotEqual(0u, geometry.VertexData.Info.Flags & (1u << (int)VertexSemantics.Tangent));
+        Assert.Equal(540746503u, (uint)convertedShader.FileName);
+        Assert.Equal(886638433u, (uint)convertedShader.Name);
+    }
+
+    [Fact]
     public void MixedWeightsRequireSeparatingTheAccessory()
     {
         using var dir = new TestTempDirectory();
