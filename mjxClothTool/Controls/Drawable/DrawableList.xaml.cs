@@ -485,6 +485,18 @@ namespace mjxClothTool.Controls
             }
         }
 
+        private void ProjectPropConverter_Click(object sender, RoutedEventArgs e)
+        {
+            var files = MyListBox.SelectedItems.OfType<GDrawable>()
+                .Where(d => !d.IsReserved && !string.IsNullOrWhiteSpace(d.FilePath)).ToList();
+            if (files.Count == 0)
+            {
+                Show("Select a drawable with a source file.", "Prop Converter", CustomMessageBoxButtons.OKOnly);
+                return;
+            }
+            new PropConverterWindow(files) { Owner = Window.GetWindow(this) }.Show();
+        }
+
         private async void ChangeDrawableType_Click(object sender, RoutedEventArgs e)
         {
             var manager = MainWindow.AddonManager;
@@ -716,8 +728,12 @@ namespace mjxClothTool.Controls
         {
             var selectedDrawables = MainWindow.AddonManager.SelectedAddon.SelectedDrawables.ToList();
 
-            MenuItem menuItem = sender as MenuItem;
-            var tag = menuItem?.Tag?.ToString();
+            await ExportDrawablesAsync(Window.GetWindow(this), selectedDrawables, (sender as MenuItem)?.Tag as string);
+        }
+
+        internal static async Task ExportDrawablesAsync(Window owner, List<GDrawable> selectedDrawables, string tag)
+        {
+            if (selectedDrawables.Count == 0) return;
 
             OpenFolderDialog folder = new()
             {
@@ -730,33 +746,34 @@ namespace mjxClothTool.Controls
                 Multiselect = false
             };
 
-            if (folder.ShowDialog() != true)
+            if (folder.ShowDialog(owner) != true)
             {
                 return;
             }
 
-            string folderPath = folder.FolderName;
-
             try
             {
-                if (!string.IsNullOrEmpty(tag) && (tag == "YTD" || tag == "PNG" || tag == "DDS"))
-                {
-                    foreach (var drawable in selectedDrawables)
-                    {
-                        await Task.Run(() => FileHelper.SaveTexturesAsync(new List<GTexture>(drawable.Textures), folderPath, tag).ConfigureAwait(false));
-                    }
-
-                    if (tag == "DDS" || tag == "PNG")
-                    {
-                        return;
-                    }
-                }
-
-                await FileHelper.SaveDrawablesAsync(selectedDrawables, folderPath).ConfigureAwait(false);
+                await WriteDrawableExportAsync(selectedDrawables, folder.FolderName, tag);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"An error occurred during export: {ex.Message}", "Export Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        internal static async Task WriteDrawableExportAsync(List<GDrawable> selectedDrawables, string folderPath, string tag)
+        {
+            var groups = selectedDrawables.GroupBy(d => d.Sex).ToList();
+            foreach (var group in groups)
+            {
+                var destination = groups.Count == 1 ? folderPath : System.IO.Path.Combine(folderPath, group.Key.ToString());
+                if (tag is "YTD" or "PNG" or "DDS")
+                {
+                    foreach (var drawable in group)
+                        await Task.Run(() => FileHelper.SaveTexturesAsync(drawable.Textures.ToList(), destination, tag));
+                }
+                if (tag is not ("DDS" or "PNG"))
+                    await FileHelper.SaveDrawablesAsync(group.ToList(), destination);
             }
         }
 

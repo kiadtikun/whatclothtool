@@ -46,6 +46,7 @@
                 <MenuItem Header="_Duplicate Inspector" Tag="DuplicateInspector" Click="DuplicateInspector_Click" />
                 <Separator />
                 <MenuItem Header="_Optimize Textures" Click="OptimizeTextures_Click" />
+                <MenuItem Header="_Prop Converter" Click="PropConverter_Click" />
             </MenuItem>
 
             <MenuItem Header="" IsEnabled="False">

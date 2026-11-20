@@ -22,6 +22,14 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        if (Array.Exists(e.Args, arg => arg.Equals("--prop-converter", StringComparison.OrdinalIgnoreCase)))
+        {
+            StartupUri = new Uri("Views/PropConverterWindow.xaml", UriKind.Relative);
+            base.OnStartup(e);
+            ChangeTheme(Settings.Default.IsDarkMode);
+            return;
+        }
+
         ResetSplashCreated = new ManualResetEvent(false);
 
         SplashThread = new Thread(ShowSplash);

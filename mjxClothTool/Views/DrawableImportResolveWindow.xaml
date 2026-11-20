@@ -20,6 +20,12 @@
             <RowDefinition Height="50" />
         </Grid.RowDefinitions>
         <Grid.Resources>
+            <ContextMenu x:Key="ProjectExportMenu">
+                <MenuItem Header="Export as YDD" Click="ExportChecked_Click"/>
+                <MenuItem Header="Export as YDD with textures" Tag="YTD" Click="ExportChecked_Click"/>
+                <MenuItem Header="Export only textures as DDS" Tag="DDS" Click="ExportChecked_Click"/>
+                <MenuItem Header="Export only textures as PNG" Tag="PNG" Click="ExportChecked_Click"/>
+            </ContextMenu>
             <Style x:Key="DrawableImportResolveRowBorder" TargetType="Border">
                 <Setter Property="Margin" Value="4,2"/>
                 <Setter Property="Padding" Value="8"/>

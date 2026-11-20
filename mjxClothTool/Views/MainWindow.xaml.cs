@@ -626,6 +626,21 @@ namespace mjxClothTool
             inspector.ShowDialog();
         }
 
+        private PropConverterWindow _propConverter;
+
+        private void PropConverter_Click(object sender, RoutedEventArgs e)
+        {
+            if (_propConverter == null)
+            {
+                _propConverter = new PropConverterWindow { Owner = this };
+                _propConverter.Closed += (_, _) => _propConverter = null;
+                _propConverter.Show();
+            }
+            if (_propConverter.WindowState == WindowState.Minimized)
+                _propConverter.WindowState = WindowState.Normal;
+            _propConverter.Activate();
+        }
+
         private void OptimizeTextures_Click(object sender, RoutedEventArgs e)
         {
             new BulkOptimizeWindow { Owner = this }.ShowDialog();

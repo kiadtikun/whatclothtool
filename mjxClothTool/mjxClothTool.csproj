@@ -25,6 +25,7 @@
     <Resource Include="Resources\mjxClothToolIcon.ico" />
     <Resource Include="Resources\reservedDrawable.ydd" />
     <Resource Include="Resources\reservedTexture.ytd" />
+    <None Update="PropConverter.cmd" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <EmbeddedResource Include="Resources\GameBase\mp_f_freemode_01.ymt.xml" />
     <EmbeddedResource Include="Resources\GameBase\mp_m_freemode_01.ymt.xml" />
   </ItemGroup>

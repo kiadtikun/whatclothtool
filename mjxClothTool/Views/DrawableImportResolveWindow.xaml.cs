@@ -391,6 +391,8 @@ namespace mjxClothTool.Views
             _showDrawableProperties = true;
             _showResolvedItems = true;
             Title = "Change drawable type";
+            ImportList.ContextMenu = (ContextMenu)ImportList.FindResource("ProjectExportMenu");
+            ImportList.ContextMenuOpening += (_, e) => e.Handled = !Items.Any(i => i.IsChecked);
 
             foreach (var drawable in drawables)
             {
@@ -404,6 +406,14 @@ namespace mjxClothTool.Views
             DataContext = this;
             SelectedAssetType = drawables.FirstOrDefault()?.IsProp == true ? "Prop" : "Component";
             SetDrawableTypeOptions(SelectedAssetType);
+        }
+
+        private async void ExportChecked_Click(object sender, RoutedEventArgs e)
+        {
+            var drawables = GetControlTargetItems().Select(i => i.ProjectDrawable).ToList();
+            IsEnabled = false;
+            try { await Controls.DrawableList.ExportDrawablesAsync(this, drawables, ((MenuItem)sender).Tag as string); }
+            finally { IsEnabled = true; }
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)

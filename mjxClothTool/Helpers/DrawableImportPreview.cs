@@ -19,50 +19,54 @@ internal static class DrawableImportPreview
     {
         var ydd = new YddFile();
         ydd.Load(File.ReadAllBytes(filePath));
+        return Create(ydd, LoadMatchingTextures(filePath, isProp, texturePath), cancellationToken, true);
+    }
+
+    internal static Model3DGroup Create(YddFile ydd, TextureDictionary externalTextures, CancellationToken cancellationToken, bool normalize)
+    {
         cancellationToken.ThrowIfCancellationRequested();
 
-        var drawable = ydd.Drawables?.FirstOrDefault();
-        var lod = drawable?.DrawableModels;
-        var models = new[] { lod?.High, lod?.Med, lod?.Low, lod?.VLow }
-            .FirstOrDefault(level => level?.Length > 0);
-        if (models == null)
-        {
-            throw new InvalidDataException("The drawable contains no models.");
-        }
-
-        var externalTextures = LoadMatchingTextures(filePath, isProp, texturePath);
-        var embeddedTextures = drawable.ShaderGroup?.TextureDictionary;
-        var materials = new Dictionary<Texture, DiffuseMaterial>();
+                var materials = new Dictionary<Texture, DiffuseMaterial>();
         var fallbackMaterial = new DiffuseMaterial(Brushes.LightSlateGray);
         var preview = new Model3DGroup();
-
-        foreach (var model in models)
+        foreach (var drawable in ydd.Drawables ?? [])
         {
-            foreach (var geometry in model.Geometries ?? [])
+            var lod = drawable?.DrawableModels;
+            var embeddedTextures = drawable?.ShaderGroup?.TextureDictionary;
+            foreach (var models in new[] { lod?.High, lod?.Med, lod?.Low, lod?.VLow, lod?.Extra })
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var mesh = CreateMesh(geometry);
-                if (mesh == null)
+                if (models == null) continue;
+        foreach (var model in models)
                 {
-                    continue;
-                }
-
-                var material = fallbackMaterial;
-                if (mesh.TextureCoordinates.Count > 0)
-                {
-                    var texture = FindDiffuseTexture(geometry, embeddedTextures, externalTextures);
-                    if (texture != null && !materials.TryGetValue(texture, out material))
+                    foreach (var geometry in model?.Geometries ?? [])
                     {
-                        material = CreateMaterial(texture) ?? fallbackMaterial;
-                        materials.Add(texture, material);
+                        cancellationToken.ThrowIfCancellationRequested();
+                        var mesh = CreateMesh(geometry);
+                        if (mesh == null)
+                        {
+                            continue;
+                        }
+
+                        var material = fallbackMaterial;
+                        if (mesh.TextureCoordinates.Count > 0)
+                        {
+                            var texture = FindDiffuseTexture(geometry, embeddedTextures, externalTextures);
+                            if (texture != null && !materials.TryGetValue(texture, out material))
+                            {
+                                material = CreateMaterial(texture) ?? fallbackMaterial;
+                                materials.Add(texture, material);
+                            }
+                        }
+
+                        preview.Children.Add(new GeometryModel3D(mesh, material) { BackMaterial = material });
                     }
                 }
-
-                preview.Children.Add(new GeometryModel3D(mesh, material) { BackMaterial = material });
+                if (preview.Children.Count > 0) break;
             }
+            if (preview.Children.Count > 0) break;
         }
 
-        var bounds = preview.Bounds;
+var bounds = preview.Bounds;
         var diagonal = new Vector3D(bounds.SizeX, bounds.SizeY, bounds.SizeZ).Length;
         if (bounds.IsEmpty || !double.IsFinite(diagonal) || diagonal <= 0)
         {
@@ -77,7 +81,8 @@ internal static class DrawableImportPreview
             -bounds.Z - bounds.SizeZ / 2));
         var scale = 2 / diagonal;
         transform.Scale(new Vector3D(scale, scale, scale));
-        preview.Transform = new MatrixTransform3D(transform);
+        if (normalize)
+            preview.Transform = new MatrixTransform3D(transform);
         preview.Freeze();
         return preview;
     }
@@ -87,8 +92,8 @@ internal static class DrawableImportPreview
         const int position = (int)VertexSemantics.Position;
         const int texCoord = (int)VertexSemantics.TexCoord0;
 
-        var vertices = geometry.VertexData;
-        var indices = geometry.IndexBuffer?.Indices;
+        var vertices = geometry?.VertexData;
+        var indices = geometry?.IndexBuffer?.Indices;
         if (vertices?.Info == null || vertices.VertexCount == 0 ||
             (vertices.Info.Flags & (1 << position)) == 0 ||
             indices == null || indices.Length < 3 || indices.Length % 3 != 0 ||
