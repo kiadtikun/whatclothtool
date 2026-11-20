@@ -40,10 +40,25 @@ namespace mjxClothTool.Views
         public string FilePath { get; }
         public string FileName => ProjectDrawable?.Name ?? Path.GetFileName(FilePath);
         internal GDrawable ProjectDrawable { get; }
-        internal bool HasTypeChange => ProjectDrawable != null &&
-            (ProjectDrawable.IsProp != IsProp || ProjectDrawable.TypeNumeric != DrawableType);
+        internal bool HasProjectChange => ProjectDrawable != null &&
+            (Gender != FromDetectedGender(ProjectDrawable.Sex) ||
+             ProjectDrawable.IsProp != IsProp || ProjectDrawable.TypeNumeric != DrawableType);
         public bool RequiresGender { get; }
         public bool RequiresDrawableType { get; }
+
+        private bool _isChecked;
+        public bool IsChecked
+        {
+            get => _isChecked;
+            set
+            {
+                if (_isChecked != value)
+                {
+                    _isChecked = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         private bool _isPreviewed;
         public bool IsPreviewed
@@ -157,13 +172,15 @@ namespace mjxClothTool.Views
         private DrawableImportResolveItem _previewedItem;
         private double _lastPreviewMouseX;
 
-        public IEnumerable<string> GenderTypes => DrawableImportResolveItem.GenderOptions.Keys;
+        public IEnumerable<string> GenderTypes => DrawableImportResolveItem.GenderOptions
+            .Where(option => !_editProjectDrawables || option.Value != DrawableImportGender.Both)
+            .Select(option => option.Key);
         public List<string> AssetTypes { get; set; } = ["Component", "Prop"];
         public ObservableCollection<DrawableImportResolveItem> Items { get; } = [];
         internal Dictionary<string, DrawableImportGender> SelectedGenders { get; private set; } = [];
         public Dictionary<string, (bool IsProp, int DrawableType)> SelectedDrawableTypes { get; private set; } = [];
 
-        public Visibility GenderTextVisibility => _showGender || _editProjectDrawables ? Visibility.Visible : Visibility.Collapsed;
+        public Visibility GenderTextVisibility => _showGender ? Visibility.Visible : Visibility.Collapsed;
         public Visibility DrawableTextVisibility => _showDrawableProperties ? Visibility.Visible : Visibility.Collapsed;
         public Visibility GenderControlsVisibility => _showGender ? Visibility.Visible : Visibility.Collapsed;
         public Visibility DrawableControlsVisibility => _showDrawableProperties ? Visibility.Visible : Visibility.Collapsed;
@@ -194,11 +211,11 @@ namespace mjxClothTool.Views
             get
             {
                 if (_editProjectDrawables)
-                    return "Click a row to preview it. Hold Shift to select a range, then apply a new type to the selection.";
+                    return "Tick items or hold Shift and click rows to select a range. Click a row to preview it, then apply a gender or type.";
 
                 if (_reviewDroppedFiles)
                 {
-                    return "Click a row to preview it. Hold Shift and click another row to select a range for Apply.";
+                    return "Tick items to apply changes. Click a row to preview it. Hold Shift and click another row to select a range.";
                 }
 
                 var parts = new List<string>();
@@ -212,12 +229,12 @@ namespace mjxClothTool.Views
                     parts.Add("drawable properties");
                 }
 
-                return $"Click a row to preview it. Hold Shift and click another row to select a range, then apply {string.Join(" and ", parts)}.";
+                return $"Tick items or hold Shift and click rows to select a range, then apply {string.Join(" and ", parts)}. Click a row to preview it.";
             }
         }
         public string SelectionSummary => _editProjectDrawables
-            ? $"{ImportList.SelectedItems.Count} selected, {Items.Count(item => item.HasTypeChange)} with changes"
-            : $"{ImportList.SelectedItems.Count} selected, {Items.Count(x => x.IsResolved)} of {Items.Count} resolved";
+            ? $"{Items.Count(item => item.IsChecked)} selected, {Items.Count(item => item.HasProjectChange)} with changes"
+            : $"{Items.Count(item => item.IsChecked)} selected, {Items.Count(x => x.IsResolved)} of {Items.Count} resolved";
 
         private bool _showResolvedItems;
         public bool ShowResolvedItems
@@ -251,7 +268,8 @@ namespace mjxClothTool.Views
         }
 
         private DrawableImportGender PendingGender =>
-            SelectedGender != null && DrawableImportResolveItem.GenderOptions.TryGetValue(SelectedGender, out var gender)
+            SelectedGender != null && DrawableImportResolveItem.GenderOptions.TryGetValue(SelectedGender, out var gender) &&
+            (!_editProjectDrawables || gender != DrawableImportGender.Both)
                 ? gender
                 : DrawableImportGender.None;
 
@@ -277,12 +295,14 @@ namespace mjxClothTool.Views
         public bool IsGenderApplyEnabled => PendingGender != DrawableImportGender.None && GetControlTargetItems().Any(x => x.RequiresGender);
         public bool IsDrawableApplyEnabled => SelectedDrawableType != null && GetControlTargetItems().Any(x => x.RequiresDrawableType);
         public bool IsSubmitEnabled => _editProjectDrawables
-            ? Items.Any(item => item.HasTypeChange)
+            ? Items.Any(item => item.HasProjectChange)
             : Items.Count > 0 && (Items.All(x => x.IsResolved) || CanResolveSingleUnresolvedItem());
 
-        internal IEnumerable<(GDrawable Drawable, bool IsProp, int Type)> ProjectTypeChanges =>
-            Items.Where(item => item.HasTypeChange)
-                .Select(item => (item.ProjectDrawable, item.IsProp.Value, item.DrawableType.Value));
+        internal IEnumerable<(GDrawable Drawable, Enums.SexType Sex, bool IsProp, int Type)> ProjectChanges =>
+            Items.Where(item => item.HasProjectChange)
+                .Select(item => (item.ProjectDrawable,
+                    item.Gender == DrawableImportGender.Female ? Enums.SexType.female : Enums.SexType.male,
+                    item.IsProp.Value, item.DrawableType.Value));
 
         private List<string> _drawableTypes = [];
         public List<string> DrawableTypes
@@ -345,6 +365,7 @@ namespace mjxClothTool.Views
                     drawableType,
                     _showGender,
                     _showDrawableProperties);
+                item.PropertyChanged += ImportItem_PropertyChanged;
                 Items.Add(item);
             }
 
@@ -366,14 +387,17 @@ namespace mjxClothTool.Views
         {
             InitializeComponent();
             _editProjectDrawables = true;
+            _showGender = true;
             _showDrawableProperties = true;
             _showResolvedItems = true;
             Title = "Change drawable type";
 
             foreach (var drawable in drawables)
             {
-                Items.Add(new DrawableImportResolveItem(drawable.FullFilePath, drawable.Sex,
-                    (drawable.IsProp, drawable.TypeNumeric), false, true, drawable));
+                var item = new DrawableImportResolveItem(drawable.FullFilePath, drawable.Sex,
+                    (drawable.IsProp, drawable.TypeNumeric), true, true, drawable) { IsChecked = true };
+                item.PropertyChanged += ImportItem_PropertyChanged;
+                Items.Add(item);
             }
 
             VisibleItems = new ListCollectionView(Items);
@@ -400,6 +424,35 @@ namespace mjxClothTool.Views
                 item != _previewedItem)
             {
                 await ShowPreviewAsync(item);
+            }
+        }
+
+        private async void ImportItemCheckBox_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not FrameworkElement { DataContext: DrawableImportResolveItem item } checkBox)
+                return;
+
+            // Move the native Shift-selection anchor without changing the checked items.
+            _isApplyingBulkUpdate = true;
+            try
+            {
+                (ItemsControl.ContainerFromElement(ImportList, checkBox) as ListBoxItem)?.Focus();
+            }
+            finally
+            {
+                _isApplyingBulkUpdate = false;
+            }
+
+            if (item != _previewedItem)
+                await ShowPreviewAsync(item);
+        }
+
+        private void ImportItem_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(DrawableImportResolveItem.IsChecked) && !_isApplyingBulkUpdate)
+            {
+                SyncControlSelectionsFromSingleTarget();
+                NotifySelectionChanged();
             }
         }
 
@@ -553,6 +606,7 @@ namespace mjxClothTool.Views
                     apply(item);
                     if (!_editProjectDrawables && item.IsResolved)
                     {
+                        item.IsChecked = false;
                         ImportList.SelectedItems.Remove(item);
                     }
                 }
@@ -645,14 +699,50 @@ namespace mjxClothTool.Views
             Close();
         }
 
-        private void SelectAll_Click(object sender, RoutedEventArgs e) => ImportList.SelectAll();
+        private void SelectAll_Click(object sender, RoutedEventArgs e)
+        {
+            SetCheckedItems(true);
+            ImportList.SelectAll();
+        }
 
-        private void SelectNone_Click(object sender, RoutedEventArgs e) => ImportList.UnselectAll();
+        private void SelectNone_Click(object sender, RoutedEventArgs e)
+        {
+            SetCheckedItems(false);
+            ImportList.UnselectAll();
+        }
+
+        private void SetCheckedItems(bool isChecked)
+        {
+            _isApplyingBulkUpdate = true;
+            try
+            {
+                var targets = isChecked ? ImportList.Items.Cast<DrawableImportResolveItem>() : Items;
+                foreach (var item in targets)
+                    item.IsChecked = isChecked;
+            }
+            finally
+            {
+                _isApplyingBulkUpdate = false;
+            }
+            SyncControlSelectionsFromSingleTarget();
+            NotifySelectionChanged();
+        }
 
         private void ImportList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (!_isApplyingBulkUpdate)
             {
+                _isApplyingBulkUpdate = true;
+                try
+                {
+                    foreach (DrawableImportResolveItem item in e.AddedItems)
+                        item.IsChecked = true;
+                }
+                finally
+                {
+                    _isApplyingBulkUpdate = false;
+                }
+                SyncControlSelectionsFromSingleTarget();
                 NotifySelectionChanged();
             }
         }
@@ -664,6 +754,7 @@ namespace mjxClothTool.Views
                 return;
             }
 
+            item.PropertyChanged -= ImportItem_PropertyChanged;
             OnItemsChanged();
             if (_previewedItem == item)
             {
@@ -679,12 +770,13 @@ namespace mjxClothTool.Views
         {
             OnPropertyChanged(nameof(HeaderText));
             OnPropertyChanged(nameof(IsSubmitEnabled));
+            if (!_editProjectDrawables)
+                SyncControlSelectionsFromSingleTarget();
             NotifySelectionChanged();
         }
 
         private void NotifySelectionChanged()
         {
-            SyncControlSelectionsFromSingleTarget();
             OnPropertyChanged(nameof(SelectionSummary));
             OnPropertyChanged(nameof(IsGenderApplyEnabled));
             OnPropertyChanged(nameof(IsDrawableApplyEnabled));
@@ -692,14 +784,7 @@ namespace mjxClothTool.Views
 
         private List<DrawableImportResolveItem> GetControlTargetItems()
         {
-            var selectedItems = ImportList.SelectedItems.Cast<DrawableImportResolveItem>().ToList();
-            if (selectedItems.Count > 0)
-            {
-                return selectedItems;
-            }
-
-            var unresolvedItems = Items.Where(x => !x.IsResolved).ToList();
-            return unresolvedItems.Count == 1 ? unresolvedItems : [];
+            return Items.Where(item => item.IsChecked).ToList();
         }
 
         private bool ShouldShowGenderControls()

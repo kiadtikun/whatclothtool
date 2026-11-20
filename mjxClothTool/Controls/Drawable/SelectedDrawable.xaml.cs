@@ -1220,23 +1220,22 @@ namespace mjxClothTool.Controls
             SelectedDraw.ChangeDrawableType(newValue.ToString());
         }
 
-        private void DrawableSex_Changed(object sender, UpdatedEventArgs e)
+        private async void DrawableSex_Changed(object sender, UpdatedEventArgs e)
         {
             if (!e.IsUserInitiated)
             {
                 return;
             }
 
-            var newValue = e.DependencyPropertyChangedEventArgs.NewValue;
-            var oldValue = e.DependencyPropertyChangedEventArgs.OldValue;
-
-            if ((newValue == null || oldValue == null) || newValue == oldValue)
-            {
+            var drawable = SelectedDraw;
+            var manager = MainWindow.AddonManager;
+            if (drawable == null || !Enum.TryParse<Enums.SexType>(e.DependencyPropertyChangedEventArgs.NewValue as string, out var sex) ||
+                !manager.ChangeDrawableSex(manager.SelectedAddon, drawable, sex))
                 return;
-            }
 
-
-            SelectedDraw.ChangeDrawableSex(newValue.ToString());
+            SaveHelper.SetUnsavedChanges(true);
+            if (MainWindow.Instance.MainWindowContentControl.Content is ProjectWindow project)
+                await project.SelectAndRevealDrawablesAsync([drawable]);
         }
 
         private async void ReplaceReserved_Click(object sender, RoutedEventArgs e)

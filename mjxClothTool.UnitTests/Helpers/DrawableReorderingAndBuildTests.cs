@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text.Json;
 using mjxClothTool.Controls;
 using mjxClothTool.Helpers;
@@ -125,6 +126,34 @@ public class DrawableReorderingAndBuildTests
         Assert.Equal("jbib_diff_075_a_uni", d102.Textures[0].GetBuildName(map[d102]));
         Assert.Equal("jbib_diff_076_a_uni", d075.Textures[0].GetBuildName(map[d075]));
         Assert.Equal("jbib_diff_077_a_uni", d076.Textures[0].GetBuildName(map[d076]));
+    }
+
+    [Fact]
+    public void ImportAppendsAfterReorderedDrawablesWithGapsInTheirNumbers()
+    {
+        var manager = new AddonManager();
+        var addon = new Addon("Addon 1");
+        manager.Addons.Add(addon);
+        var moved = CreateTestDrawable(number: 122, order: 10);
+        var next = CreateTestDrawable(number: 112, order: 11);
+        moved.Group = next.Group = "jbib";
+        addon.Drawables.Add(next);
+        addon.Drawables.Add(moved);
+        var before = BuildResourceHelper.GetBuildNumberMap(addon.Drawables);
+        var imported = CreateTestDrawable(number: 0, order: 0);
+
+        var add = typeof(AddonManager).GetMethod("AddDrawableInternal", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        add.Invoke(manager, [imported, false, false]);
+
+        Assert.Equal("jbib_122_u", moved.Name);
+        Assert.Equal(10, moved.Order);
+        Assert.Equal("jbib_112_u", next.Name);
+        Assert.Equal(11, next.Order);
+        Assert.Equal("jbib_123_u", imported.Name);
+        Assert.Equal(12, imported.Order);
+        var after = BuildResourceHelper.GetBuildNumberMap(addon.Drawables);
+        Assert.Equal(before[moved], after[moved]);
+        Assert.Equal(before[next], after[next]);
     }
 
     [Fact]

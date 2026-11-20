@@ -43,6 +43,7 @@ namespace mjxClothTool
             InitializeComponent();
             this.Visibility = Visibility.Hidden;
             CWHelper.Init();
+            App.splashScreen.ReportProgress(42);
 
             _instance = this;
             _addonManager = new AddonManager();
@@ -56,6 +57,7 @@ namespace mjxClothTool
 
             DataContext = _navigationHelper;
             _navigationHelper.Navigate("Home");
+            App.splashScreen.ReportProgress(72);
 
             TempFoldersCleanup();
 
@@ -73,13 +75,6 @@ namespace mjxClothTool
 
             Dispatcher.BeginInvoke((Action)(async () =>
             {
-                App.splashScreen.AddMessage("Starting app");
-
-                while (App.splashScreen.MessageQueueCount > 0)
-                {
-                    await Task.Delay(2000);
-                }
-
                 await App.splashScreen.LoadComplete();
 
                 this.Dispatcher.Invoke(() =>

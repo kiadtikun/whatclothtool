@@ -314,6 +314,11 @@ public class SaveBackupFile
                     {
                         drawable.IsReserved = true;
                     }
+
+                    if (drawable.IsReserved && string.IsNullOrWhiteSpace(drawable.Group))
+                    {
+                        drawable.Group = drawable.TypeName;
+                    }
                 }
             }
 

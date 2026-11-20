@@ -11,9 +11,9 @@
         Background="{DynamicResource Brush50}"
         WindowStartupLocation="CenterOwner"
         MinHeight="560"
-        MinWidth="680"
+        MinWidth="800"
         Height="680"
-        Width="780">
+        Width="1060">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="*" />
@@ -32,7 +32,7 @@
                         <Setter Property="Background" Value="{DynamicResource Brush75}"/>
                         <Setter Property="BorderBrush" Value="{DynamicResource Brush300}"/>
                     </DataTrigger>
-                    <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                    <DataTrigger Binding="{Binding IsChecked}" Value="True">
                         <Setter Property="Background" Value="{DynamicResource Brush200}"/>
                         <Setter Property="BorderBrush" Value="{DynamicResource Brush400}"/>
                     </DataTrigger>
@@ -47,15 +47,19 @@
         </Grid.Resources>
 
         <Grid Grid.Row="0" Margin="15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MinWidth="350"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*" MinWidth="390"/>
+            </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
-                <RowDefinition Height="1.25*" MinHeight="94"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="3*" MinHeight="250"/>
+                <RowDefinition Height="*" MinHeight="94"/>
             </Grid.RowDefinitions>
-            <TextBlock Text="{Binding HeaderText}" FontSize="16" Foreground="{DynamicResource Brush950}" FontWeight="Medium"/>
+            <TextBlock Grid.ColumnSpan="3" Text="{Binding HeaderText}" FontSize="16" Foreground="{DynamicResource Brush950}" FontWeight="Medium"/>
             <TextBlock Grid.Row="1"
+                       Grid.ColumnSpan="3"
                        Text="{Binding HelpText}"
                        FontSize="12"
                        Foreground="{DynamicResource Brush500}"
@@ -73,11 +77,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
                     <DockPanel Grid.Row="0" Margin="8,6">
-                        <TextBlock Text="{Binding SelectionSummary}"
-                                   Foreground="{DynamicResource Brush600}"
-                                   FontSize="12"
-                                   VerticalAlignment="Center"/>
-                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                             <CheckBox Content="Show resolved"
                                       IsChecked="{Binding ShowResolvedItems, Mode=TwoWay}"
                                       Visibility="{Binding ImportActionsVisibility}"
@@ -95,6 +95,12 @@
                                     Margin="4,0,0,0"
                                     Click="SelectNone_Click"/>
                         </StackPanel>
+                        <TextBlock Text="{Binding SelectionSummary}"
+                                   ToolTip="{Binding SelectionSummary}"
+                                   Foreground="{DynamicResource Brush600}"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"/>
                     </DockPanel>
                     <ListBox x:Name="ImportList"
                              Grid.Row="1"
@@ -128,11 +134,19 @@
                                 <Border Style="{StaticResource DrawableImportResolveRowBorder}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="*"/>
                                             <ColumnDefinition Width="Auto"/>
                                             <ColumnDefinition Width="Auto"/>
                                         </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" ToolTip="{Binding FilePath}">
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                  Focusable="False"
+                                                  VerticalAlignment="Center"
+                                                  Margin="0,0,8,0"
+                                                  AutomationProperties.Name="{Binding FileName, StringFormat=Select {0}}"
+                                                  Click="ImportItemCheckBox_Click"/>
+                                        <StackPanel Grid.Column="1" ToolTip="{Binding FilePath}">
                                             <TextBlock Text="{Binding FileName}"
                                                        Foreground="{DynamicResource Brush950}"
                                                        FontWeight="SemiBold"
@@ -142,7 +156,7 @@
                                                        FontSize="11"
                                                        TextTrimming="CharacterEllipsis"/>
                                         </StackPanel>
-                                        <StackPanel Grid.Column="1"
+                                        <StackPanel Grid.Column="2"
                                                     Orientation="Horizontal"
                                                     VerticalAlignment="Center"
                                                     Margin="12,0,0,0">
@@ -178,7 +192,7 @@
                                                 </TextBlock.Style>
                                             </TextBlock>
                                         </StackPanel>
-                                        <Button Grid.Column="2"
+                                        <Button Grid.Column="3"
                                                 Content="Remove"
                                                 Visibility="{Binding DataContext.ImportActionsVisibility, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 AutomationProperties.Name="{Binding FileName, StringFormat=Remove {0}}"
@@ -195,23 +209,23 @@
                 </Grid>
             </Border>
 
-            <GridSplitter Grid.Row="3"
-                          Height="8"
-                          Margin="0,3"
-                          HorizontalAlignment="Stretch"
-                          VerticalAlignment="Center"
-                          ResizeDirection="Rows"
+            <GridSplitter Grid.Row="2"
+                          Grid.Column="1"
+                          Width="8"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Stretch"
+                          ResizeDirection="Columns"
                           ResizeBehavior="PreviousAndNext"
                           Background="{DynamicResource Brush200}"
-                          ToolTip="Drag to resize the file list"
-                          AutomationProperties.Name="Resize the file list"/>
+                          ToolTip="Drag to resize the file list and preview"
+                          AutomationProperties.Name="Resize the file list and preview"/>
 
-            <Grid Grid.Row="4">
+            <Grid Grid.Row="2" Grid.Column="2">
                 <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
-                <StackPanel Grid.Row="0">
+                <StackPanel Grid.Row="1">
                     <Grid x:Name="GenderControls"
                           Margin="0,0,0,8"
                           Visibility="{Binding GenderControlsVisibility}">
@@ -240,11 +254,11 @@
                     <Grid x:Name="DrawableControls"
                           Visibility="{Binding DrawableControlsVisibility}">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="210"/>
+                            <ColumnDefinition Width="*" MaxWidth="210"/>
                             <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="210"/>
+                            <ColumnDefinition Width="*" MaxWidth="210"/>
                             <ColumnDefinition Width="10"/>
-                            <ColumnDefinition Width="170"/>
+                            <ColumnDefinition Width="*" MaxWidth="170"/>
                         </Grid.ColumnDefinitions>
                         <c:ModernLabelComboBox
                             Grid.Column="0"
@@ -272,8 +286,8 @@
                     </Grid>
                 </StackPanel>
 
-                <Border Grid.Row="1"
-                        Margin="0,8,0,0"
+                <Border Grid.Row="0"
+                        Margin="0,0,0,8"
                         Padding="10"
                         Background="{DynamicResource Brush100}"
                         BorderBrush="{DynamicResource Brush200}"

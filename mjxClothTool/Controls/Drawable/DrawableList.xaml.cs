@@ -499,7 +499,7 @@ namespace mjxClothTool.Controls
             if (dialog.ShowDialog() != true)
                 return;
 
-            var changed = manager.ChangeDrawableTypes(addon, dialog.ProjectTypeChanges);
+            var changed = manager.ChangeDrawableProperties(addon, dialog.ProjectChanges);
             if (changed.Count == 0)
                 return;
 

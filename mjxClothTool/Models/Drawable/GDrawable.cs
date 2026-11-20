@@ -673,26 +673,6 @@ public class GDrawable : INotifyPropertyChanged
         OnPropertyChanged(nameof(AvailableTypes));
     }
 
-    public void ChangeDrawableSex(string newSex)
-    {
-        // transform new sex to enum
-        var newSexEnum = Enum.Parse<Enums.SexType>(newSex);
-        var reserved = new GDrawableReserved(Sex, IsProp, TypeNumeric, Number);
-        var index = MainWindow.AddonManager.SelectedAddon.Drawables.IndexOf(this);
-    
-        DuplicateDetector.UnregisterDrawable(this);
-
-        // change drawable sex
-        Sex = newSexEnum;
-
-        // replace drawable with reserved in the same place
-        MainWindow.AddonManager.SelectedAddon.Drawables[index] = reserved;
-
-        // re-add changed drawable
-        MainWindow.AddonManager.AddDrawable(this);
-        MainWindow.AddonManager.Addons.Sort(true);
-    }
-
     private void OnTexturesCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         if (e.NewItems != null)

@@ -740,13 +740,13 @@ namespace mjxClothTool.Models
 
             if (addedAny)
             {
-                SaveHelper.SetUnsavedChanges(true);
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    // Import assigns numbers to new files only. Existing numbers and drag order are saved separately.
+                    Addons.Sort();
+                    SaveHelper.SetUnsavedChanges(true);
+                });
             }
-
-            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-            {
-                Addons.Sort(true);
-            });
         }
 
 
@@ -825,7 +825,11 @@ namespace mjxClothTool.Models
         }
 
         public IReadOnlyList<GDrawable> ChangeDrawableTypes(Addon source,
-            IEnumerable<(GDrawable Drawable, bool IsProp, int Type)> changes)
+            IEnumerable<(GDrawable Drawable, bool IsProp, int Type)> changes) =>
+            ChangeDrawableProperties(source, changes.Select(change => (change.Drawable, change.Drawable.Sex, change.IsProp, change.Type)));
+
+        public IReadOnlyList<GDrawable> ChangeDrawableProperties(Addon source,
+            IEnumerable<(GDrawable Drawable, Enums.SexType Sex, bool IsProp, int Type)> changes)
         {
             lock (AddonsLock)
             {
@@ -835,21 +839,22 @@ namespace mjxClothTool.Models
                 // Prepare all replacements before editing either addon collection.
                 var replacements = changes
                     .Where(change => !change.Drawable.IsReserved &&
-                        (change.Drawable.IsProp != change.IsProp || change.Drawable.TypeNumeric != change.Type))
+                        (change.Drawable.Sex != change.Sex ||
+                         change.Drawable.IsProp != change.IsProp || change.Drawable.TypeNumeric != change.Type))
                     .Select(change =>
                     {
                         var drawable = change.Drawable;
                         int index = source.Drawables.IndexOf(drawable);
                         var typeName = EnumHelper.GetName(change.Type, change.IsProp);
-                        if (index < 0 || typeName == null)
-                            throw new ArgumentException("A selected drawable or its target type is invalid.", nameof(changes));
+                        if (index < 0 || typeName == null || !Enum.IsDefined(change.Sex))
+                            throw new ArgumentException("A selected drawable or its target properties are invalid.", nameof(changes));
 
                         var reserved = new GDrawableReserved(drawable.Sex, drawable.IsProp, drawable.TypeNumeric, drawable.Number)
                         {
                             Group = string.IsNullOrWhiteSpace(drawable.Group) ? drawable.TypeName : drawable.Group,
                             Order = drawable.Order
                         };
-                        return (drawable, change.IsProp, typeName, index, reserved);
+                        return (drawable, change.Sex, change.IsProp, change.Type, typeName, index, reserved);
                     })
                     .ToList();
 
@@ -861,8 +866,18 @@ namespace mjxClothTool.Models
                     var drawable = change.drawable;
                     DuplicateDetector.UnregisterDrawable(drawable);
                     source.Drawables[change.index] = change.reserved;
-                    drawable.ApplyDrawableType(change.typeName, change.IsProp);
-                    AddDrawableInternal(drawable, markUnsaved: false);
+                    if (drawable.Sex != change.Sex)
+                    {
+                        drawable.Sex = change.Sex;
+                        drawable.SexName = change.Sex.ToString();
+                    }
+
+                    if (drawable.IsProp != change.IsProp || drawable.TypeNumeric != change.Type)
+                        drawable.ApplyDrawableType(change.typeName, change.IsProp);
+                    else
+                        drawable.Group = change.reserved.Group;
+
+                    AddDrawableInternal(drawable, markUnsaved: false, preserveGroup: true);
                 }
 
                 if (replacements.Count > 0)
@@ -872,16 +887,29 @@ namespace mjxClothTool.Models
             }
         }
 
+        public bool ChangeDrawableSex(Addon source, GDrawable drawable, Enums.SexType sex)
+        {
+            lock (AddonsLock)
+            {
+                if (source == null || drawable == null || !Addons.Contains(source) || !source.Drawables.Contains(drawable))
+                    return false;
+
+                return ChangeDrawableProperties(source, [(drawable, sex, drawable.IsProp, drawable.TypeNumeric)]).Count > 0;
+            }
+        }
+
         /// <summary>
         /// Internal method to add a drawable without duplicate checking.
         /// Used by batch processing after duplicates have already been handled.
         /// Batch callers pass markUnsaved: false and set the unsaved flag once at the end.
         /// </summary>
-        private void AddDrawableInternal(GDrawable drawable, bool markUnsaved = true)
+        private void AddDrawableInternal(GDrawable drawable, bool markUnsaved = true, bool preserveGroup = false)
         {
             lock (AddonsLock)
             {
+                var capacity = GlobalConstants.MAX_DRAWABLES_IN_ADDON;
                 int nextNumber = 0;
+                int nextOrder = 0;
                 int currentAddonIndex = 0;
                 Addon currentAddon;
 
@@ -889,16 +917,22 @@ namespace mjxClothTool.Models
                 while (currentAddonIndex < Addons.Count)
                 {
                     currentAddon = Addons[currentAddonIndex];
-                    int countOfType = currentAddon.Drawables.Count(x => x.TypeNumeric == drawable.TypeNumeric && x.IsProp == drawable.IsProp && x.Sex == drawable.Sex);
+                    var matching = currentAddon.Drawables
+                        .Where(x => x.TypeNumeric == drawable.TypeNumeric && x.IsProp == drawable.IsProp && x.Sex == drawable.Sex)
+                        .ToList();
 
-                    // If the number of drawables of this type has reached 128, move to the next addon
-                    if (countOfType >= GlobalConstants.MAX_DRAWABLES_IN_ADDON)
+                    if (matching.Count >= capacity)
                     {
                         currentAddonIndex++;
                         continue;
                     }
 
-                    nextNumber = countOfType;
+                    var usedNumbers = matching.Select(item => item.Number % capacity).ToHashSet();
+                    nextNumber = usedNumbers.DefaultIfEmpty(-1).Max() + 1;
+                    if (nextNumber == capacity)
+                        nextNumber = Enumerable.Range(0, capacity).First(number => !usedNumbers.Contains(number));
+
+                    nextOrder = matching.Select(item => item.Order).DefaultIfEmpty(-1).Max() + 1;
                     break;
                 }
 
@@ -918,8 +952,9 @@ namespace mjxClothTool.Models
                 // mark as new, to make it easier to find
                 drawable.IsNew = true;
                 drawable.Number = nextNumber;
-                drawable.Order = nextNumber;
-                drawable.Group = drawable.TypeName;
+                drawable.Order = nextOrder;
+                if (!preserveGroup)
+                    drawable.Group = drawable.TypeName;
                 drawable.SetDrawableName();
 
                 currentAddon.Drawables.Add(drawable);

@@ -1,17 +1,13 @@
 using System.Threading.Tasks;
 using System.Windows;
-using System.Collections.Generic;
-using System.Timers;
-using Application = System.Windows.Application;
+using System.Windows.Threading;
 
 namespace mjxClothTool.Views
 {
     public interface ISplashScreen
     {
-        void AddMessage(string message);
+        void ReportProgress(double progress);
         Task LoadComplete();
-        int MessageQueueCount { get; }
-        void Shutdown();
     }
 
     /// <summary>
@@ -19,56 +15,26 @@ namespace mjxClothTool.Views
     /// </summary>
     public partial class SplashScreen : Window, ISplashScreen
     {
-        private readonly Queue<string> messageQueue = new();
-        private readonly Timer messageTimer;
-
-        public int MessageQueueCount
-        {
-            get { return messageQueue.Count; }
-        }
-
         public SplashScreen()
         {
             InitializeComponent();
-
-            messageTimer = new Timer(1500);
-            messageTimer.Elapsed += ProcessMessageQueue;
-            messageTimer.Start();
         }
 
-        public void AddMessage(string message)
+        public void ReportProgress(double progress)
         {
-            messageQueue.Enqueue(message);
-        }
-
-        private void ProcessMessageQueue(object sender, ElapsedEventArgs e)
-        {
-            if (messageQueue.Count > 0)
-            {
-                string message = messageQueue.Dequeue();
-                Dispatcher.Invoke(() =>
-                {
-                    updateTextBox.Text = message;
-                });
-            }
+            Dispatcher.InvokeAsync(() => LoadingProgress.Value = progress);
         }
 
         public async Task LoadComplete()
         {
-            messageTimer.Stop();
+            await Dispatcher.InvokeAsync(() => LoadingProgress.Value = LoadingProgress.Maximum);
+            Dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
 
-            Dispatcher.InvokeShutdown();
-            Application.Current.MainWindow.Visibility = Visibility.Visible;
-
-            // for some weird reason this doesn't work without delay (main window is opened in background, not at the top)
+            var mainWindow = Application.Current.MainWindow;
+            mainWindow.Visibility = Visibility.Visible;
+            // Allow the splash to close and the main window to render before taking focus.
             await Task.Delay(250);
-            Application.Current.MainWindow.Activate();
-        }
-
-        public void Shutdown()
-        {
-            messageTimer.Stop();
-            Dispatcher.InvokeShutdown();
+            mainWindow.Activate();
         }
     }
 }
