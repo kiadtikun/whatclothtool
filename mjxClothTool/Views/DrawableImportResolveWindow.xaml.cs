@@ -413,6 +413,7 @@ namespace mjxClothTool.Views
             else if (ImportList.Items.Count > 0)
             {
                 ImportList.SelectedIndex = 0;
+                ((DrawableImportResolveItem)ImportList.SelectedItem).IsChecked = true;
             }
             await ShowPreviewAsync(ImportList.SelectedItem as DrawableImportResolveItem);
         }
@@ -730,12 +731,13 @@ namespace mjxClothTool.Views
 
         private void ImportList_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (!_isApplyingBulkUpdate)
+            if (!_isApplyingBulkUpdate &&
+                (ImportList.SelectedItems.Count > 1 || (Keyboard.Modifiers & ModifierKeys.Shift) != 0))
             {
                 _isApplyingBulkUpdate = true;
                 try
                 {
-                    foreach (DrawableImportResolveItem item in e.AddedItems)
+                    foreach (DrawableImportResolveItem item in ImportList.SelectedItems)
                         item.IsChecked = true;
                 }
                 finally
