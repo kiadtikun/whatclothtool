@@ -108,6 +108,7 @@
                              SelectionMode="Extended"
                              IsSynchronizedWithCurrentItem="False"
                              SelectionChanged="ImportList_SelectionChanged"
+                             PreviewKeyDown="ImportList_PreviewKeyDown"
                              AutomationProperties.Name="{Binding ListName}"
                              Background="Transparent"
                              BorderThickness="0"

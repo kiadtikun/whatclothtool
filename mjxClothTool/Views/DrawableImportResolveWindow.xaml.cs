@@ -211,11 +211,11 @@ namespace mjxClothTool.Views
             get
             {
                 if (_editProjectDrawables)
-                    return "Click a row to preview. Shift+click selects a range. Ctrl+click unticks a row. Apply changes to the ticked items.";
+                    return "Click to preview. Enter ticks the row. Shift+click ticks a range. Ctrl+click unticks a row. Apply changes to the ticked items.";
 
                 if (_reviewDroppedFiles)
                 {
-                    return "Click a row to preview. Shift+click selects a range. Ctrl+click unticks a row. Apply changes to the ticked items.";
+                    return "Click to preview. Enter ticks the row. Shift+click ticks a range. Ctrl+click unticks a row. Apply changes to the ticked items.";
                 }
 
                 var parts = new List<string>();
@@ -229,7 +229,7 @@ namespace mjxClothTool.Views
                     parts.Add("drawable properties");
                 }
 
-                return $"Click a row to preview. Shift+click selects a range. Ctrl+click unticks a row. Apply {string.Join(" and ", parts)} to the ticked items.";
+                return $"Click to preview. Enter ticks the row. Shift+click ticks a range. Ctrl+click unticks a row. Apply {string.Join(" and ", parts)} to the ticked items.";
             }
         }
         public string SelectionSummary => _editProjectDrawables
@@ -426,6 +426,20 @@ namespace mjxClothTool.Views
             {
                 await ShowPreviewAsync(item);
             }
+        }
+
+        private void ImportList_PreviewKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key != Key.Enter || e.OriginalSource is Button)
+                return;
+
+            var row = ItemsControl.ContainerFromElement(ImportList, e.OriginalSource as DependencyObject) as ListBoxItem;
+            var item = row?.Content as DrawableImportResolveItem ?? ImportList.SelectedItem as DrawableImportResolveItem;
+            if (item == null)
+                return;
+
+            item.IsChecked = true;
+            e.Handled = true;
         }
 
         private async void ImportItemCheckBox_Click(object sender, RoutedEventArgs e)
