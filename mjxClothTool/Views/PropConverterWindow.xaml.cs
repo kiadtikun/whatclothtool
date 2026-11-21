@@ -38,8 +38,9 @@ public partial class PropConverterWindow : Window
     private string _gameFolder;
     private Point3D _focus;
     private ProjectFile _activeFile;
+    private bool _loadingTargetSlot;
 
-    private sealed class ProjectFile
+    internal sealed class ProjectFile
     {
         public string Label { get; init; }
         public string Path { get; init; }
@@ -109,7 +110,9 @@ public partial class PropConverterWindow : Window
         ClearGizmo();
         Mesh.Content = null;
         Character.SelectedIndex = file.CharacterIndex;
-        Slot.SelectedIndex = file.SlotIndex;
+        _loadingTargetSlot = true;
+        try { Slot.SelectedIndex = file.SlotIndex; }
+        finally { _loadingTargetSlot = false; }
         (Number.Text, ScaleBox.Text, _rigPath, _textures) = (file.Number, file.Scale, file.Rig, file.Textures);
         (X.Text, Y.Text, Z.Text) = (file.X, file.Y, file.Z);
         (Rx.Text, Ry.Text, Rz.Text) = (file.Rx, file.Ry, file.Rz);
@@ -134,6 +137,12 @@ public partial class PropConverterWindow : Window
     }
 
     private void UpdateExportButton() => Export.IsEnabled = ProjectFiles.SelectedItems.Count > 1 || _preview != null;
+
+    internal static void ApplyTargetSlotToSelection(IEnumerable<ProjectFile> files, int slotIndex, bool isProgrammaticLoad)
+    {
+        if (isProgrammaticLoad || slotIndex < 0) return;
+        foreach (var file in files) file.SlotIndex = slotIndex;
+    }
 
     private void CharacterChanged(object sender, RoutedEventArgs e)
     {
@@ -193,7 +202,12 @@ public partial class PropConverterWindow : Window
     private void InputChanged(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
-        if (sender == AutoPieces || sender == WholeGlasses || sender == Slot) ShowPieceHint();
+        if (sender == Slot)
+        {
+            ApplyTargetSlotToSelection(ProjectFiles.SelectedItems.Cast<ProjectFile>(), Slot.SelectedIndex, _loadingTargetSlot);
+            ShowPieceHint();
+        }
+        else if (sender == AutoPieces || sender == WholeGlasses) ShowPieceHint();
         _revision++;
         _preview = null;
         UpdateExportButton();
