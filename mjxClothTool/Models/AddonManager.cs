@@ -9,6 +9,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.ComponentModel;
 using System.IO;
 using System.Linq;
@@ -79,16 +80,20 @@ namespace mjxClothTool.Models
         public ObservableCollection<MoveMenuItem> MoveMenuItems { get; set; } = [];
 
         private ObservableCollection<Addon> _addons = [];
+        private readonly HashSet<Addon> _observedAddons = [];
         public ObservableCollection<Addon> Addons
         {
             get { return _addons; }
             set
             {
-                if (_addons != value)
-                {
-                    _addons = value;
-                    OnPropertyChanged();
-                }
+                var next = value ?? [];
+                if (ReferenceEquals(_addons, next)) return;
+
+                StopObservingAddons();
+                _addons = next;
+                StartObservingAddons();
+                RebuildMoveMenuItems();
+                OnPropertyChanged();
             }
         }
 
@@ -102,6 +107,7 @@ namespace mjxClothTool.Models
                 if (_selectedAddon != value)
                 {
                     _selectedAddon = value;
+                    RebuildMoveMenuItems();
                     OnPropertyChanged();
                 }
             }
@@ -121,7 +127,66 @@ namespace mjxClothTool.Models
 
         public AddonManager()
         {
+            StartObservingAddons();
             _drawableProcessingTask = Task.Run(ProcessDrawableQueue);
+        }
+
+        private void StartObservingAddons()
+        {
+            _addons.CollectionChanged += Addons_CollectionChanged;
+            RefreshObservedAddons();
+        }
+
+        private void StopObservingAddons()
+        {
+            _addons.CollectionChanged -= Addons_CollectionChanged;
+            foreach (var addon in _observedAddons)
+            {
+                addon.PropertyChanged -= Addon_PropertyChanged;
+            }
+            _observedAddons.Clear();
+        }
+
+        private void Addons_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            RefreshObservedAddons();
+            RebuildMoveMenuItems();
+        }
+
+        private void RefreshObservedAddons()
+        {
+            foreach (var addon in _observedAddons)
+            {
+                addon.PropertyChanged -= Addon_PropertyChanged;
+            }
+
+            _observedAddons.Clear();
+            foreach (var addon in _addons)
+            {
+                addon.PropertyChanged += Addon_PropertyChanged;
+                _observedAddons.Add(addon);
+            }
+        }
+
+        private void Addon_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(Addon.Name))
+            {
+                RebuildMoveMenuItems();
+            }
+        }
+
+        private void RebuildMoveMenuItems()
+        {
+            MoveMenuItems.Clear();
+            foreach (var addon in _addons)
+            {
+                MoveMenuItems.Add(new MoveMenuItem
+                {
+                    Header = addon.Name,
+                    IsEnabled = !ReferenceEquals(addon, _selectedAddon)
+                });
+            }
         }
 
         public void CreateAddon()

@@ -1,7 +1,6 @@
 using mjxClothTool.Collections;
 using mjxClothTool.Constants;
 using mjxClothTool.Models.Drawable;
-using mjxClothTool.Models.Other;
 using mjxClothTool.Models.Texture;
 using System;
 using System.Collections.Generic;
@@ -283,8 +282,6 @@ public class Addon : INotifyPropertyChanged
         {
             OnPropertyChanged(nameof(IsMultipleDrawablesSelected));
         };
-
-        MainWindow.AddonManager?.MoveMenuItems.Add(new MoveMenuItem() { Header = name, IsEnabled = true });
 
         if (name == "design")
         {
