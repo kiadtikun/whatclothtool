@@ -12,6 +12,7 @@ internal static class RigidPropConverter
     internal const string NeedsPieces = "This model uses several bones. Select the mesh pieces to export.";
     private const uint PedShaderName = 886638433;
     private const uint PedShaderFile = 540746503;
+    private const uint PedDefaultShaderFile = 999874878;
     private const uint PedDefaultCutoutShaderFile = 3176173383;
     private const uint RigidPedVertexFlags = 0x40F9;
     internal record Result(string Name, byte[] Data, string SourceBinding);
@@ -308,7 +309,8 @@ internal static class RigidPropConverter
             src.VertexBytes.Length != checked(src.VertexCount * src.VertexStride))
             throw new InvalidDataException("Unsupported vertex layout. Use a standard GTA V rigid accessory mesh.");
         var shader = geometry.Shader as ShaderFX;
-        bool rigidPed = shader != null && (uint)shader.FileName == PedDefaultCutoutShaderFile;
+        bool rigidPed = shader != null && ((uint)shader.FileName == PedDefaultShaderFile ||
+            (uint)shader.FileName == PedDefaultCutoutShaderFile);
         uint flags = info.Flags & ~6u;
         if (rigidPed)
         {

@@ -80,8 +80,10 @@ public class RigidPropConverterTests
         Assert.Equal(1, drawable.RenderMaskMed & 1);
     }
 
-    [Fact]
-    public void ClothingCutoutGeometryBecomesACompleteRigidPedPropGeometry()
+    [Theory]
+    [InlineData(3176173383u)] // ped_default_cutout.sps
+    [InlineData(999874878u)] // ped_default.sps
+    public void ClothingGeometryBecomesACompleteRigidPedPropGeometry(uint sourceShaderFile)
     {
         using var dir = new TestTempDirectory();
         var path = WriteSource(dir, Model);
@@ -91,7 +93,7 @@ public class RigidPropConverterTests
         geometry.Shader = new ShaderFX
         {
             Name = new MetaHash(695944937),
-            FileName = new MetaHash(3176173383)
+            FileName = new MetaHash(sourceShaderFile)
         };
         var min = new Vector3(float.MaxValue);
         var max = new Vector3(float.MinValue);
