@@ -1,4 +1,5 @@
 using CodeWalker.GameFiles;
+using CodeWalker.Utils;
 using SharpDX;
 using System;
 using System.Collections.Generic;
@@ -15,6 +16,8 @@ internal static class RigidPropConverter
     private const uint PedDefaultShaderFile = 999874878;
     private const uint PedDefaultCutoutShaderFile = 3176173383;
     private const uint RigidPedVertexFlags = 0x40F9;
+    private const string FallbackNormalName = "normal_000";
+    private const string FallbackNormalResource = "mjxClothTool.Resources.normal_000.dds";
     internal record Result(string Name, byte[] Data, string SourceBinding);
 
     internal static string Export(Result prop, string[] textures, string parent)
@@ -227,6 +230,7 @@ internal static class RigidPropConverter
         drawable.BoundingCenter = (min + max) * 0.5f;
         drawable.BoundingSphereRadius = Vector3.Distance(min, drawable.BoundingCenter);
         drawable.BuildVertexDecls();
+        ApplyFallbackNormal(drawable);
         var result = new YddFile { DrawableDict = new DrawableDictionary
         {
             Hashes = [JenkHash.GenHash(name)],
@@ -387,6 +391,62 @@ internal static class RigidPropConverter
         };
         geometry.VertexData = dest;
         geometry.BoneIds = null;
+    }
+
+    /// <summary>
+    /// Binds the bundled flat normal map to every output shader whose bump sampler is empty, so
+    /// converted props do not reach the game with an unbound normal sampler. Existing normal maps
+    /// and shaders that define no bump sampler are left untouched; one texture is shared per drawable.
+    /// </summary>
+    internal static void ApplyFallbackNormal(Drawable drawable)
+    {
+        var shaders = drawable?.ShaderGroup?.Shaders?.data_items;
+        if (shaders == null || shaders.Length == 0) return;
+        var targets = new List<ShaderParameter>();
+        foreach (var shader in shaders)
+        {
+            var parameters = shader?.ParametersList;
+            if (parameters?.Parameters == null || parameters.Hashes == null) continue;
+            int count = Math.Min(parameters.Parameters.Length, parameters.Hashes.Length);
+            for (int i = 0; i < count; i++)
+            {
+                if ((uint)parameters.Hashes[i] != (uint)ShaderParamNames.BumpSampler) continue;
+                if (parameters.Parameters[i].Data != null) continue;
+                targets.Add(parameters.Parameters[i]);
+            }
+        }
+        if (targets.Count == 0) return;
+        var hash = JenkHash.GenHash(FallbackNormalName);
+        var dictionary = drawable.ShaderGroup.TextureDictionary;
+        var textures = dictionary?.Textures?.data_items;
+        var texture = textures?.FirstOrDefault(t => t != null &&
+            (t.NameHash == hash || string.Equals(t.Name, FallbackNormalName, StringComparison.OrdinalIgnoreCase)));
+        if (texture == null)
+        {
+            texture = LoadFallbackNormal(hash);
+            var list = textures?.ToList() ?? [];
+            list.Add(texture);
+            if (dictionary == null) drawable.ShaderGroup.TextureDictionary = dictionary = new TextureDictionary();
+            dictionary.BuildFromTextureList(list);
+        }
+        foreach (var parameter in targets)
+        {
+            parameter.DataType = 0; // texture parameter
+            parameter.Data = texture;
+        }
+    }
+
+    private static Texture LoadFallbackNormal(uint hash)
+    {
+        using var stream = typeof(RigidPropConverter).Assembly.GetManifestResourceStream(FallbackNormalResource)
+            ?? throw new InvalidDataException("The fallback normal map is missing from the application.");
+        using var memory = new MemoryStream();
+        stream.CopyTo(memory);
+        var texture = DDSIO.GetTexture(memory.ToArray())
+            ?? throw new InvalidDataException("Cannot read the fallback normal map.");
+        texture.Name = FallbackNormalName;
+        texture.NameHash = hash;
+        return texture;
     }
 
     private static bool IsByteColour(VertexDeclaration layout, VertexSemantics channel) =>

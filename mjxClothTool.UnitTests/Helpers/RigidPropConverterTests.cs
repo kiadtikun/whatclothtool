@@ -272,4 +272,129 @@ public class RigidPropConverterTests
         Assert.Throws<FileNotFoundException>(() => RigidPropConverter.Export(prop, [dir.FilePath("missing.ytd")], dir.Path));
         Assert.Empty(Directory.GetDirectories(dir.Path));
     }
+
+    private static ShaderFX ShaderWith(params ShaderParamNames[] names)
+    {
+        var parameters = names.Select(_ => new ShaderParameter { DataType = 0 }).ToArray();
+        return new ShaderFX
+        {
+            ParametersList = new ShaderParametersBlock
+            {
+                Parameters = parameters,
+                Hashes = names.Select(n => (MetaName)n).ToArray(),
+                Count = parameters.Length
+            }
+        };
+    }
+
+    private static ShaderParameter BumpSamplerOf(ShaderFX shader) =>
+        shader.ParametersList.Parameters[
+            Array.IndexOf(shader.ParametersList.Hashes, (MetaName)ShaderParamNames.BumpSampler)];
+
+    private static Drawable DrawableWith(params ShaderFX[] shaders) => new()
+    {
+        ShaderGroup = new ShaderGroup
+        {
+            Shaders = new ResourcePointerArray64<ShaderFX> { data_items = shaders }
+        }
+    };
+
+    [Fact]
+    public void EmptyBumpSamplersShareOneEmbeddedFallbackNormal()
+    {
+        var first = ShaderWith(ShaderParamNames.DiffuseSampler, ShaderParamNames.BumpSampler);
+        var second = ShaderWith(ShaderParamNames.BumpSampler);
+        var drawable = DrawableWith(first, second);
+
+        RigidPropConverter.ApplyFallbackNormal(drawable);
+
+        var texture = Assert.IsType<Texture>(BumpSamplerOf(first).Data);
+        Assert.Same(texture, BumpSamplerOf(second).Data);
+        Assert.Equal("normal_000", texture.Name);
+        Assert.Equal((ushort)16, texture.Width);
+        Assert.Equal((ushort)16, texture.Height);
+        Assert.Equal(TextureFormat.D3DFMT_DXT5, texture.Format);
+        // Only the empty bump samplers are filled in.
+        Assert.Null(first.ParametersList.Parameters[0].Data);
+        var dictionary = drawable.ShaderGroup.TextureDictionary;
+        Assert.Single(dictionary.Textures.data_items);
+        Assert.Same(texture, dictionary.Lookup(JenkHash.GenHash("normal_000")));
+    }
+
+    [Fact]
+    public void ExistingNormalMapIsNotReplaced()
+    {
+        var shader = ShaderWith(ShaderParamNames.BumpSampler);
+        var existing = new TextureBase { Name = "teef_normal", NameHash = JenkHash.GenHash("teef_normal") };
+        BumpSamplerOf(shader).Data = existing;
+        var drawable = DrawableWith(shader);
+
+        RigidPropConverter.ApplyFallbackNormal(drawable);
+
+        Assert.Same(existing, BumpSamplerOf(shader).Data);
+        Assert.Null(drawable.ShaderGroup.TextureDictionary);
+    }
+
+    [Fact]
+    public void ShadersWithoutABumpSamplerAreLeftAlone()
+    {
+        var shader = ShaderWith(ShaderParamNames.DiffuseSampler);
+        var drawable = DrawableWith(shader);
+        RigidPropConverter.ApplyFallbackNormal(drawable);
+        Assert.Null(drawable.ShaderGroup.TextureDictionary);
+        Assert.All(shader.ParametersList.Parameters, parameter => Assert.Null(parameter.Data));
+
+        // Missing shader groups and parameter lists must not throw.
+        RigidPropConverter.ApplyFallbackNormal(new Drawable());
+        RigidPropConverter.ApplyFallbackNormal(DrawableWith(new ShaderFX()));
+    }
+
+    [Fact]
+    public void ExistingEmbeddedFallbackNormalIsReusedWithoutDuplicating()
+    {
+        var shader = ShaderWith(ShaderParamNames.BumpSampler);
+        var drawable = DrawableWith(shader);
+        var existing = new Texture { Name = "normal_000", NameHash = JenkHash.GenHash("normal_000") };
+        var dictionary = new TextureDictionary();
+        dictionary.BuildFromTextureList([existing]);
+        dictionary.Dict = null; // A stale lookup table must not force a duplicate.
+        drawable.ShaderGroup.TextureDictionary = dictionary;
+
+        RigidPropConverter.ApplyFallbackNormal(drawable);
+
+        Assert.Same(existing, BumpSamplerOf(shader).Data);
+        Assert.Single(drawable.ShaderGroup.TextureDictionary.Textures.data_items);
+    }
+
+    [Fact]
+    public void FallbackNormalSurvivesTheYddRoundTrip()
+    {
+        using var dir = new TestTempDirectory();
+        var source = new YddFile();
+        source.Load(File.ReadAllBytes(WriteSource(dir, Model)));
+        var drawable = source.Drawables[0];
+        var shader = ShaderWith(ShaderParamNames.DiffuseSampler, ShaderParamNames.BumpSampler);
+        drawable.ShaderGroup = new ShaderGroup
+        {
+            Shaders = new ResourcePointerArray64<ShaderFX> { data_items = [shader] }
+        };
+
+        RigidPropConverter.ApplyFallbackNormal(drawable);
+        var saved = new YddFile();
+        saved.Load(source.Save());
+
+        var reloaded = saved.Drawables[0].ShaderGroup;
+        var parameter = reloaded.Shaders.data_items[0].ParametersList;
+        var index = Array.IndexOf(parameter.Hashes, (MetaName)ShaderParamNames.BumpSampler);
+        var texture = Assert.IsType<Texture>(parameter.Parameters[index].Data);
+        Assert.Equal("normal_000", texture.Name);
+        Assert.Equal((ushort)16, texture.Width);
+        Assert.Equal((ushort)16, texture.Height);
+        Assert.Equal(TextureFormat.D3DFMT_DXT5, texture.Format);
+        Assert.NotNull(texture.Data);
+        Assert.Same(texture, reloaded.TextureDictionary.Lookup(JenkHash.GenHash("normal_000")));
+        // Only the normal map is supplied; the diffuse sampler is not redirected to it
+        // (CodeWalker fills a still-empty first parameter with its own placeholder on load).
+        Assert.NotSame(texture, parameter.Parameters[0].Data);
+    }
 }
