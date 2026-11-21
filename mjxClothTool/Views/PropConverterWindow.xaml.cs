@@ -408,7 +408,14 @@ public partial class PropConverterWindow : Window
                             ydd.Load(bytes);
                             var names = new[] { Path.GetFileName(path).Split('^').Last(), ydd.Drawables?.FirstOrDefault()?.Name, projectPropType + "_" };
                             local = names.Any(n => n?.StartsWith("p_", StringComparison.OrdinalIgnoreCase) == true);
-                            foreach (var original in new[] { Enums.PropNumbers.p_eyes, Enums.PropNumbers.p_lwrist, Enums.PropNumbers.p_rwrist })
+                            foreach (var original in new[]
+                            {
+                                Enums.PropNumbers.p_head,
+                                Enums.PropNumbers.p_eyes,
+                                Enums.PropNumbers.p_ears,
+                                Enums.PropNumbers.p_lwrist,
+                                Enums.PropNumbers.p_rwrist
+                            })
                                 if (names.Any(n => n?.StartsWith(original + "_", StringComparison.OrdinalIgnoreCase) == true))
                                     displaySlot = original;
                         }

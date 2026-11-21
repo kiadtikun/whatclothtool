@@ -104,10 +104,12 @@ internal static class RigidPropConverter
 
     internal static ushort AnchorTag(Enums.PropNumbers slot) => slot switch
         {
+            Enums.PropNumbers.p_head => 31086,
             Enums.PropNumbers.p_eyes => 31086,
+            Enums.PropNumbers.p_ears => 31086,
             Enums.PropNumbers.p_lwrist => 61007,
             Enums.PropNumbers.p_rwrist => 43810,
-            _ => throw new ArgumentException("Choose glasses or a wrist slot.")
+            _ => throw new ArgumentException("Choose a supported prop slot.")
         };
 
     internal static Result Convert(string path, string rigPath, Enums.PropNumbers slot, int number,
@@ -174,7 +176,7 @@ internal static class RigidPropConverter
         bool automatic = false;
         if (!wholeGlasses && !extracting && !objectLocal && autoSelect && UsesSeveralBones(models))
         {
-            pieces = PropMeshParts.NearAnchor(drawable, sourceRig, rig, tag);
+            pieces = PropMeshParts.NearAnchor(drawable, sourceRig, rig, tag, slot == Enums.PropNumbers.p_eyes);
             if (pieces.Length == 0) throw new InvalidDataException(NeedsPieces);
             PropMeshParts.Extract(drawable, pieces);
             models = drawable.AllModels;

@@ -51,7 +51,9 @@
                     <ListBox x:Name="PieceList" Visibility="Collapsed" MaxHeight="112" SelectionMode="Multiple" SelectionChanged="PieceSelectionChanged"/>
                     <TextBlock Text="Target slot"/>
                     <ComboBox x:Name="Slot" SelectedIndex="0" SelectionChanged="InputChanged" Margin="0,4,0,8">
+                        <ComboBoxItem Content="Helmet · p_head" Tag="p_head"/>
                         <ComboBoxItem Content="Glasses · p_eyes" Tag="p_eyes"/>
+                        <ComboBoxItem Content="Earring · p_ears" Tag="p_ears"/>
                         <ComboBoxItem Content="Left wrist · p_lwrist" Tag="p_lwrist"/>
                         <ComboBoxItem Content="Right wrist · p_rwrist" Tag="p_rwrist"/>
                     </ComboBox>

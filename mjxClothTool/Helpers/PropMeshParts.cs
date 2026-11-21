@@ -53,11 +53,10 @@ internal static class PropMeshParts
         }
     }
 
-    internal static Part[] NearAnchor(Drawable drawable, Skeleton sourceRig, Skeleton targetRig, ushort tag)
+    internal static Part[] NearAnchor(Drawable drawable, Skeleton sourceRig, Skeleton targetRig, ushort tag, bool glasses)
     {
         // Skinned YDD positions are already in ped rest space. Rigid models store bone-local positions.
         var center = targetRig.BonesMap[tag].AbsTransform.TranslationVector;
-        bool glasses = tag == RigidPropConverter.AnchorTag(Enums.PropNumbers.p_eyes);
         var limits = new Vector3(0.10f);
         if (glasses)
         {

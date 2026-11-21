@@ -81,6 +81,22 @@ public class RigidPropConverterTests
     }
 
     [Theory]
+    [InlineData(Enums.PropNumbers.p_head)]
+    [InlineData(Enums.PropNumbers.p_ears)]
+    public void HeadPropSlotsUseTheHeadAnchorAndTheirOwnFilePrefix(Enums.PropNumbers slot)
+    {
+        Assert.Equal(31086, RigidPropConverter.AnchorTag(slot));
+        using var dir = new TestTempDirectory();
+        var result = RigidPropConverter.Convert(WriteSource(dir, Model), null, slot, 12,
+            Vector3.Zero, Vector3.Zero, 1);
+        var ydd = new YddFile();
+        ydd.Load(result.Data);
+
+        Assert.Equal($"{slot}_012", result.Name);
+        Assert.Equal(result.Name, Assert.Single(ydd.Drawables).Name);
+    }
+
+    [Theory]
     [InlineData(3176173383u)] // ped_default_cutout.sps
     [InlineData(999874878u)] // ped_default.sps
     public void ClothingGeometryBecomesACompleteRigidPedPropGeometry(uint sourceShaderFile)
