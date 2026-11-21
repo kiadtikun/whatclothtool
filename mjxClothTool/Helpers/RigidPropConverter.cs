@@ -323,6 +323,10 @@ internal static class RigidPropConverter
         var dest = new VertexData { Info = layout, VertexCount = src.VertexCount, VertexStride = layout.Stride,
             VertexType = (VertexType)layout.Flags, VertexBytes = new byte[checked(src.VertexCount * layout.Stride)] };
         var normalMatrix = Matrix.Transpose(Matrix.Invert(transform));
+        var fixedColour0 = new Color(255, 128, 0, 255);
+        var fixedColour1 = new Color(0, 0, 0, 255);
+        bool hasColour0 = IsByteColour(layout, VertexSemantics.Colour0);
+        bool hasColour1 = IsByteColour(layout, VertexSemantics.Colour1);
         for (int n = 0; n < src.VertexCount; n++)
         {
             if (rigidPed)
@@ -334,8 +338,6 @@ internal static class RigidPropConverter
                     Buffer.BlockCopy(src.VertexBytes, n * src.VertexStride + info.GetComponentOffset(channel),
                         dest.VertexBytes, n * dest.VertexStride + layout.GetComponentOffset(channel), size);
                 }
-                dest.SetColour(n, (int)VertexSemantics.Colour0, new Color(255, 128, 0, 255));
-                dest.SetColour(n, (int)VertexSemantics.Colour1, new Color(0, 0, 0, 255));
                 var uv = (info.Flags & (1u << (int)VertexSemantics.TexCoord0)) == 0
                     ? Vector2.Zero : src.GetVector2(n, (int)VertexSemantics.TexCoord0);
                 dest.SetVector2(n, (int)VertexSemantics.TexCoord0, uv);
@@ -348,6 +350,10 @@ internal static class RigidPropConverter
                 Buffer.BlockCopy(src.VertexBytes, n * src.VertexStride + tail, dest.VertexBytes,
                     n * dest.VertexStride + 12, dest.VertexStride - 12);
             }
+            // The prop material reads both colour channels, so every geometry of the converted
+            // drawable is overwritten - not only the clothing geometry that was re-laid out.
+            if (hasColour0) dest.SetColour(n, (int)VertexSemantics.Colour0, fixedColour0);
+            if (hasColour1) dest.SetColour(n, (int)VertexSemantics.Colour1, fixedColour1);
             var pos = Vector3.TransformCoordinate(src.GetVector3(n, 0), transform);
             if (!Finite(pos)) throw new InvalidDataException("Non-finite coordinates in converted model.");
             dest.SetVector3(n, 0, pos);
@@ -382,6 +388,10 @@ internal static class RigidPropConverter
         geometry.VertexData = dest;
         geometry.BoneIds = null;
     }
+
+    private static bool IsByteColour(VertexDeclaration layout, VertexSemantics channel) =>
+        (layout.Flags & (1u << (int)channel)) != 0 &&
+        VertexComponentTypes.GetSizeInBytes(layout.GetComponentType((int)channel)) == 4;
 
     private static readonly int[] DirectionChannels = [(int)VertexSemantics.Normal, (int)VertexSemantics.Tangent, (int)VertexSemantics.Binormal];
 }

@@ -120,7 +120,7 @@ public class RigidPropConverterTests
     }
 
     [Fact]
-    public void PropCompatibleGeometryKeepsItsVertexColors()
+    public void PropCompatibleGeometryAlsoGetsTheFixedColors()
     {
         using var dir = new TestTempDirectory();
         var modelWithColors = Model.Replace("<Normal/><TexCoord0/>", "<Normal/><Colour0/><Colour1/><TexCoord0/>")
@@ -136,10 +136,43 @@ public class RigidPropConverterTests
 
         for (var vertex = 0; vertex < geometry.VertexData.VertexCount; vertex++)
         {
-            Assert.Equal(new Color(1, 2, 3, 255),
+            Assert.Equal(new Color(255, 128, 0, 255),
                 geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour0));
-            Assert.Equal(new Color(4, 5, 6, 255),
+            Assert.Equal(new Color(0, 0, 0, 255),
                 geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour1));
+        }
+    }
+
+    [Fact]
+    public void EveryGeometryOfEveryLodGetsTheFixedColors()
+    {
+        using var dir = new TestTempDirectory();
+        const string colours = "1 2 3 255  4 5 6 255";
+        string Geometry(string x) => $@"<Item><BoneIDs>0</BoneIDs><VertexBuffer>
+            <Layout type=""GTAV1""><Position/><BlendWeights/><BlendIndices/><Normal/><Colour0/><Colour1/><TexCoord0/></Layout>
+            <Data>
+            {x} 0 3  255 0 0 0  0 0 0 0  0 0 1  {colours}  0 1
+            {x} 0 3  255 0 0 0  0 0 0 0  0 0 1  {colours}  1 0
+            {x} 0 3  255 0 0 0  0 0 0 0  0 0 1  {colours}  1 1
+            </Data></VertexBuffer><IndexBuffer><Data>0 1 2</Data></IndexBuffer></Item>";
+        string model = $"<Item><HasSkin value=\"1\"/><Geometries>{Geometry("0")}{Geometry("1")}</Geometries></Item>";
+        var path = WriteSource(dir, model);
+        var result = RigidPropConverter.Convert(path, null, Enums.PropNumbers.p_eyes, 5,
+            Vector3.Zero, Vector3.Zero, 1);
+        var ydd = new YddFile();
+        ydd.Load(result.Data);
+        var drawable = Assert.Single(ydd.Drawables);
+        Assert.Equal(2, drawable.AllModels.Length);
+        foreach (var geometry in drawable.AllModels.SelectMany(m => m.Geometries))
+        {
+            Assert.Equal(3, geometry.VertexData.VertexCount);
+            for (var vertex = 0; vertex < geometry.VertexData.VertexCount; vertex++)
+            {
+                Assert.Equal(new Color(255, 128, 0, 255),
+                    geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour0));
+                Assert.Equal(new Color(0, 0, 0, 255),
+                    geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour1));
+            }
         }
     }
 
