@@ -86,7 +86,9 @@ public class RigidPropConverterTests
     public void ClothingGeometryBecomesACompleteRigidPedPropGeometry(uint sourceShaderFile)
     {
         using var dir = new TestTempDirectory();
-        var path = WriteSource(dir, Model);
+        var modelWithColors = Model.Replace("<Normal/><TexCoord0/>", "<Normal/><Colour0/><Colour1/><TexCoord0/>")
+            .Replace("0 0 1  ", "0 0 1  1 2 3 255  4 5 6 255  ");
+        var path = WriteSource(dir, modelWithColors);
         var source = new YddFile();
         source.Load(File.ReadAllBytes(path));
         var geometry = source.Drawables[0].DrawableModels.High[0].Geometries[0];
@@ -108,6 +110,37 @@ public class RigidPropConverterTests
         Assert.NotEqual(0u, geometry.VertexData.Info.Flags & (1u << (int)VertexSemantics.Tangent));
         Assert.Equal(540746503u, (uint)convertedShader.FileName);
         Assert.Equal(886638433u, (uint)convertedShader.Name);
+        for (var vertex = 0; vertex < geometry.VertexData.VertexCount; vertex++)
+        {
+            Assert.Equal(new Color(255, 128, 0, 255),
+                geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour0));
+            Assert.Equal(new Color(0, 0, 0, 255),
+                geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour1));
+        }
+    }
+
+    [Fact]
+    public void PropCompatibleGeometryKeepsItsVertexColors()
+    {
+        using var dir = new TestTempDirectory();
+        var modelWithColors = Model.Replace("<Normal/><TexCoord0/>", "<Normal/><Colour0/><Colour1/><TexCoord0/>")
+            .Replace("0 0 1  ", "0 0 1  1 2 3 255  4 5 6 255  ");
+        var source = new YddFile();
+        source.Load(File.ReadAllBytes(WriteSource(dir, modelWithColors)));
+        var geometry = source.Drawables[0].DrawableModels.High[0].Geometries[0];
+        geometry.Shader = new ShaderFX { FileName = new MetaHash(659901003u) };
+        var min = new Vector3(float.MaxValue);
+        var max = new Vector3(float.MinValue);
+
+        RigidPropConverter.RewriteVertices(geometry, Matrix.Identity, ref min, ref max);
+
+        for (var vertex = 0; vertex < geometry.VertexData.VertexCount; vertex++)
+        {
+            Assert.Equal(new Color(1, 2, 3, 255),
+                geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour0));
+            Assert.Equal(new Color(4, 5, 6, 255),
+                geometry.VertexData.GetColour(vertex, (int)VertexSemantics.Colour1));
+        }
     }
 
     [Fact]

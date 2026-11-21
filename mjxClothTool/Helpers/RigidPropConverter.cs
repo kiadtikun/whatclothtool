@@ -334,9 +334,8 @@ internal static class RigidPropConverter
                     Buffer.BlockCopy(src.VertexBytes, n * src.VertexStride + info.GetComponentOffset(channel),
                         dest.VertexBytes, n * dest.VertexStride + layout.GetComponentOffset(channel), size);
                 }
-                foreach (int channel in new[] { (int)VertexSemantics.Colour0, (int)VertexSemantics.Colour1 })
-                    if ((info.Flags & (1u << channel)) == 0)
-                        dest.SetColour(n, channel, new Color(255, 255, 255, 255));
+                dest.SetColour(n, (int)VertexSemantics.Colour0, new Color(255, 128, 0, 255));
+                dest.SetColour(n, (int)VertexSemantics.Colour1, new Color(0, 0, 0, 255));
                 var uv = (info.Flags & (1u << (int)VertexSemantics.TexCoord0)) == 0
                     ? Vector2.Zero : src.GetVector2(n, (int)VertexSemantics.TexCoord0);
                 dest.SetVector2(n, (int)VertexSemantics.TexCoord0, uv);
