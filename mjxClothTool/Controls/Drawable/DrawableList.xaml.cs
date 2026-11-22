@@ -29,7 +29,6 @@ namespace mjxClothTool.Controls
     public partial class DrawableList : UserControl, INotifyPropertyChanged
     {
         public event EventHandler DrawableListSelectedValueChanged;
-        public event EventHandler SearchResultsChanged;
         public event KeyEventHandler DrawableListKeyDown;
 
         public event EventHandler DrawableDeleteRequested;
@@ -205,11 +204,6 @@ namespace mjxClothTool.Controls
 
         private void Drawable_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(GDrawable.HasTextureTags) && !string.IsNullOrWhiteSpace(SearchText))
-            {
-                ApplySearchFilter();
-                return;
-            }
             if (e.PropertyName == nameof(GDrawable.Group))
             {
                 if (_isBatchUpdating)
@@ -407,7 +401,6 @@ namespace mjxClothTool.Controls
 
             DrawablesView.Refresh();
             UpdateFilteredCount();
-            SearchResultsChanged?.Invoke(this, EventArgs.Empty);
         }
 
         private void UpdateFilteredCount()
@@ -440,21 +433,7 @@ namespace mjxClothTool.Controls
 
             return GetSearchableFields(drawable)
                 .Any(field => !string.IsNullOrEmpty(field) && 
-                              field.Contains(searchText, StringComparison.OrdinalIgnoreCase)) ||
-                   GetMatchingTexture(drawable, searchText) != null;
-        }
-
-        public static GTexture? GetMatchingTexture(GDrawable drawable, string searchText)
-        {
-            if (string.IsNullOrWhiteSpace(searchText)) return null;
-            return drawable.Textures?.FirstOrDefault(texture => texture.Tags?.Any(tag =>
-                tag.Contains(searchText, StringComparison.OrdinalIgnoreCase)) == true);
-        }
-
-        public void SelectDrawable(GDrawable drawable)
-        {
-            MyListBox.SelectedItem = drawable;
-            MyListBox.ScrollIntoView(drawable);
+                              field.Contains(searchText, StringComparison.OrdinalIgnoreCase));
         }
 
         private static IEnumerable<string?> GetSearchableFields(GDrawable drawable)

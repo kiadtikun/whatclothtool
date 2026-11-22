@@ -145,16 +145,6 @@ namespace mjxClothTool.Controls
             }
         }
 
-        public void SelectTexture(GTexture texture)
-        {
-            var list = FindTextureListBox(this);
-            if (texture == null || list == null || !list.Items.Contains(texture)) return;
-            list.SelectedItem = texture;
-            list.ScrollIntoView(texture);
-        }
-
-        private void TextureTagsChanged(object sender, EventArgs e) => SaveHelper.SetUnsavedChanges(true);
-
         private void TextureListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             var listBoxItem = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource);
