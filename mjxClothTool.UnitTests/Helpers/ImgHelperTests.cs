@@ -7,6 +7,18 @@ namespace mjxClothTool.UnitTests.Helpers;
 
 public class ImgHelperTests
 {
+    [Fact]
+    public void CreateDefaultBlackDds_ProducesBlackSixteenPixelTexture()
+    {
+        var bytes = ImgHelper.CreateDefaultBlackDds();
+        var texture = DDSIO.GetTexture(bytes);
+        using var image = new MagickImage(bytes);
+
+        Assert.Equal(16, texture.Width);
+        Assert.Equal(16, texture.Height);
+        Assert.Equal(MagickColors.Black, image.GetPixels().GetPixel(0, 0).ToColor());
+    }
+
     [Theory]
     [InlineData(1)]
     [InlineData(2)]

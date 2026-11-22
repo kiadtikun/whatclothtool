@@ -1330,7 +1330,40 @@ namespace mjxClothTool.Controls
             await ReplaceTextureAsync(selectedTexture, file.FileName, e);
         }
 
-        private async Task ReplaceTextureAsync(GTexture selectedTexture, string filePath, RoutedEventArgs e)
+        private async void SetDefaultTexture_Click(object sender, RoutedEventArgs e)
+        {
+            if ((sender as MenuItem)?.DataContext is not GTexture selectedTexture)
+                return;
+
+            var temporaryPath = Path.Combine(Path.GetTempPath(), $"mjx-default-{Guid.NewGuid():N}.dds");
+            try
+            {
+                await File.WriteAllBytesAsync(temporaryPath, ImgHelper.CreateDefaultBlackDds());
+                await ReplaceTextureAsync(selectedTexture, temporaryPath, e, selectedTexture.SourceFileName);
+            }
+            catch (Exception ex)
+            {
+                LogHelper.Log($"Failed to create default texture: {ex.Message}", LogType.Error);
+                Show($"Failed to create default texture: {ex.Message}", "Error", CustomMessageBoxButtons.OKOnly, CustomMessageBoxIcon.Error);
+            }
+            finally
+            {
+                try
+                {
+                    if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+                }
+                catch (IOException ex)
+                {
+                    LogHelper.Log($"Could not delete temporary default texture: {ex.Message}", LogType.Warning);
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    LogHelper.Log($"Could not delete temporary default texture: {ex.Message}", LogType.Warning);
+                }
+            }
+        }
+
+        private async Task ReplaceTextureAsync(GTexture selectedTexture, string filePath, RoutedEventArgs e, string originalFileName = null)
         {
             try
             {
@@ -1347,7 +1380,7 @@ namespace mjxClothTool.Controls
                 var newTexture = new GTexture(selectedTexture.Id, newRelativePath, drawable.TypeNumeric,
                     drawable.Number, selectedTexture.TxtNumber, drawable.HasSkin, drawable.IsProp)
                 {
-                    OriginalFileName = Path.GetFileName(filePath),
+                    OriginalFileName = originalFileName ?? Path.GetFileName(filePath),
                     PreviousReplacement = selectedTexture
                 };
                 newTexture.Tags = new System.Collections.ObjectModel.ObservableCollection<string>(selectedTexture.Tags);

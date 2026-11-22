@@ -14,6 +14,14 @@ public static class ImgHelper
         MagickNET.Initialize();
     }
 
+    public static byte[] CreateDefaultBlackDds()
+    {
+        using var image = new MagickImage(MagickColors.Black, 16, 16);
+        image.Settings.SetDefine(MagickFormat.Dds, "compression", "dxt1");
+        image.Settings.SetDefine(MagickFormat.Dds, "mipmaps", 4);
+        return image.ToByteArray(MagickFormat.Dds);
+    }
+
     public static MagickImage GetImage(string path)
     {
         string ext = Path.GetExtension(path);

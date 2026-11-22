@@ -995,6 +995,7 @@
                                                                     </MenuItem>
                                                                     <MenuItem Header="Remove" Click="DeleteTexture_Click"/>
                                                                     <MenuItem Header="Replace" Click="ReplaceTexture_Click"/>
+                                                                    <MenuItem Header="Set Default" ToolTip="Replace with a black 16×16 texture" Click="SetDefaultTexture_Click"/>
                                                                     <MenuItem Header="Undo replace" Click="UndoReplaceTexture_Click"
                                                                               IsEnabled="{Binding CanUndoReplacement}" />
                                                                     <MenuItem Header="Open file location" Click="OpenFileLocation_Click" />
