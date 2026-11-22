@@ -562,7 +562,6 @@
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="150" />
                                 <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
@@ -645,7 +644,7 @@
                                                       IsUpdated="SelectedDrawable_Updated" />
                             </Grid>
 
-                            <Border Grid.Row="4" 
+                            <Border Grid.Row="3"
                                     VerticalAlignment="Stretch"
                                     Background="{DynamicResource Brush100}"
                                     BorderBrush="{DynamicResource Brush300}"
