@@ -474,6 +474,9 @@ public class GDrawable : INotifyPropertyChanged
     public ObservableCollection<Texture.GTexture> Textures { get; set; }
 
     [JsonIgnore]
+    public bool HasTextureTags => Textures?.Any(texture => texture.Tags?.Count > 0) == true;
+
+    [JsonIgnore]
     public bool HasTexturesNeedingOptimization => !IgnoreWarnings && (Textures?.Any(t => t.TxtDetails?.IsOptimizeNeeded == true && !t.IsOptimizedDuringBuild) ?? false);
 
     [JsonIgnore]
@@ -710,6 +713,8 @@ public class GDrawable : INotifyPropertyChanged
 
     private void OnTexturePropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(GTexture.TagSummary))
+            OnPropertyChanged(nameof(HasTextureTags));
         if (e.PropertyName == nameof(GTexture.TxtDetails) && Details != null)
         {
             ValidateDetails();

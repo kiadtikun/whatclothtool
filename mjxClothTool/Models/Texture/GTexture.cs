@@ -5,6 +5,9 @@ using mjxClothTool.Helpers;
 using ImageMagick;
 using System;
 using System.ComponentModel;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
+using System.Linq;
 using System.Drawing.Imaging;
 using System.Drawing;
 using System.IO;
@@ -32,6 +35,26 @@ public class GTexture : INotifyPropertyChanged
     public Guid Id { get; set; }
     public string FilePath { get; set; }
     public string Extension { get; set; }
+
+    private ObservableCollection<string> _tags = [];
+    public ObservableCollection<string> Tags
+    {
+        get => _tags;
+        set
+        {
+            if (ReferenceEquals(_tags, value)) return;
+            _tags.CollectionChanged -= TagsChanged;
+            _tags = value ?? [];
+            _tags.CollectionChanged += TagsChanged;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(TagSummary));
+        }
+    }
+
+    [JsonIgnore]
+    public string TagSummary => string.Join(", ", Tags);
+
+    private void TagsChanged(object? sender, NotifyCollectionChangedEventArgs e) => OnPropertyChanged(nameof(TagSummary));
 
     // Keep prior texture versions so Undo replace still works after reopening the project.
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -193,6 +216,7 @@ public class GTexture : INotifyPropertyChanged
 
     public GTexture(Guid id, string filePath, int typeNumeric, int number, int txtNumber, bool hasSkin, bool isProp)
     {
+        _tags.CollectionChanged += TagsChanged;
         Id = id;
         if (Id == Guid.Empty)
         {

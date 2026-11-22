@@ -145,6 +145,16 @@ namespace mjxClothTool.Controls
             }
         }
 
+        public void SelectTexture(GTexture texture)
+        {
+            var list = FindTextureListBox(this);
+            if (texture == null || list == null || !list.Items.Contains(texture)) return;
+            list.SelectedItem = texture;
+            list.ScrollIntoView(texture);
+        }
+
+        private void TextureTagsChanged(object sender, EventArgs e) => SaveHelper.SetUnsavedChanges(true);
+
         private void TextureListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
         {
             var listBoxItem = FindAncestor<ListBoxItem>((DependencyObject)e.OriginalSource);
@@ -1340,6 +1350,7 @@ namespace mjxClothTool.Controls
                     OriginalFileName = Path.GetFileName(filePath),
                     PreviousReplacement = selectedTexture
                 };
+                newTexture.Tags = new System.Collections.ObjectModel.ObservableCollection<string>(selectedTexture.Tags);
                 drawable.Textures[index] = newTexture;
                 newTexture.LoadThumbnailAsync();
                 SelectTextureAfterReplacement(drawable, newTexture, e);

@@ -480,6 +480,7 @@ namespace mjxClothTool.Views
         {
             if (e.AddedItems.Count > 0)
             {
+                _textureTagSearchText = string.Empty;
                 var addon = e.AddedItems[0] as Addon;
                 int index = int.Parse(addon.Name.ToString().Split(' ')[1]) - 1;
 
@@ -561,6 +562,7 @@ namespace mjxClothTool.Views
                     SelDrawable.SelectedIndex = 0;
                     SelDrawable.SelectedTextures = [Addon.SelectedTexture];
                 }
+                SelectMatchingTextureFromSearch();
             }
             else
             {
@@ -574,6 +576,32 @@ namespace mjxClothTool.Views
             if (mainWindow?.PreviewAnchorable?.IsVisible != true) return;
             
             CWHelper.SendDrawableUpdateToPreview(e);
+        }
+
+        private string _textureTagSearchText = string.Empty;
+
+        private void DrawableSearchResultsChanged(object sender, EventArgs e)
+        {
+            if (sender is not DrawableList list) return;
+            _textureTagSearchText = list.SearchText;
+            if (string.IsNullOrWhiteSpace(list.SearchText)) return;
+            var match = list.ItemsSource?.FirstOrDefault(drawable =>
+                DrawableList.GetMatchingTexture(drawable, list.SearchText) != null);
+            if (match == null) return;
+            if (!ReferenceEquals(Addon.SelectedDrawable, match)) list.SelectDrawable(match);
+            SelectMatchingTextureFromSearch();
+        }
+
+        private void SelectMatchingTextureFromSearch()
+        {
+            var drawable = Addon.SelectedDrawable;
+            if (drawable == null) return;
+            var match = DrawableList.GetMatchingTexture(drawable, _textureTagSearchText);
+            if (match == null) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (ReferenceEquals(Addon.SelectedDrawable, drawable)) SelDrawable.SelectTexture(match);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         private void SelectedDrawable_Updated(object sender, DrawableUpdatedArgs e)
