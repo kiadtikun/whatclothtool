@@ -1,9 +1,30 @@
 using mjxClothTool.Helpers;
+using mjxClothTool.Models;
+using System.Text.Json;
 
 namespace mjxClothTool.UnitTests.Helpers;
 
 public class SaveHelperTests
 {
+    [Fact]
+    public async Task WritingProjectSavePreservesCustomGroupsInMemoryAndOnDisk()
+    {
+        using var temp = new TestTempDirectory();
+        var path = temp.FilePath(SaveHelper.AutoSaveFileName);
+        var project = new AddonManager { ProjectName = "Group test" };
+        project.Groups.Add("Streetwear");
+        project.Groups.Add("Accessories");
+
+        var save = SaveHelper.WriteSaveFileAtomicallyAsync(project, path);
+        project.Groups.Add("Edited during save");
+        await save;
+
+        Assert.Equal(["Streetwear", "Accessories", "Edited during save"], project.Groups);
+        using var saved = JsonDocument.Parse(File.ReadAllBytes(path));
+        var savedGroups = saved.RootElement.GetProperty(nameof(AddonManager.Groups));
+        Assert.Equal(["Streetwear", "Accessories"], savedGroups.EnumerateArray().Select(group => group.GetString()));
+    }
+
     [Theory]
     [InlineData(false, "autosave.json")]
     [InlineData(true, "autosave.external.json")]
@@ -82,8 +103,10 @@ public class SaveHelperTests
         Assert.Empty(backups);
     }
 
-    [Fact]
-    public void GetBackupSaveFiles_FiltersByRequestedSaveName()
+    [Theory]
+    [InlineData(false, "autosave.20260101-120000-000.json")]
+    [InlineData(true, "autosave.external.20260101-120000-000.json")]
+    public void GetBackupSaveFiles_FiltersByRequestedSaveName(bool isExternal, string expectedFileName)
     {
         using var temp = new TestTempDirectory();
         var projectFolder = temp.FilePath("Project");
@@ -94,9 +117,9 @@ public class SaveHelperTests
         File.WriteAllText(internalBackup, "{}");
         File.WriteAllText(externalBackup, "{}");
 
-        var backups = SaveHelper.GetBackupSaveFiles(Path.Combine(projectFolder, SaveHelper.AutoSaveExternalFileName));
+        var backups = SaveHelper.GetBackupSaveFiles(Path.Combine(projectFolder, SaveHelper.GetSaveFileName(isExternal)));
 
         var backupPath = Assert.Single(backups).FilePath;
-        Assert.Equal(externalBackup, backupPath);
+        Assert.Equal(Path.Combine(backupFolder, expectedFileName), backupPath);
     }
 }

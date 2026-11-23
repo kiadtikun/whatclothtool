@@ -6,7 +6,6 @@ using mjxClothTool.Helpers;
 using mjxClothTool.Models.Duplicate;
 using mjxClothTool.Models.Texture;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -23,16 +22,7 @@ namespace mjxClothTool.Models.Drawable;
 
 public class GDrawable : INotifyPropertyChanged
 {
-    private static readonly BlockingCollection<GDrawable> _loadQueue = new();
-    private readonly static SemaphoreSlim _semaphore = new(Math.Clamp(Environment.ProcessorCount - 1, 3, 8));
-
-    static GDrawable()
-    {
-        for (int i = 0; i < Environment.ProcessorCount; i++)
-        {
-            Task.Run(ProcessLoadQueue);
-        }
-    }
+    private static readonly SemaphoreSlim _detailsLoadGate = new(Math.Clamp(Environment.ProcessorCount - 1, 3, 8));
 
     public event PropertyChangedEventHandler PropertyChanged;
 
@@ -536,9 +526,11 @@ public class GDrawable : INotifyPropertyChanged
 
         try
         {
-            if (FilePath != null && !IsEncrypted && File.Exists(FullFilePath))
+            var fullPath = FullFilePath;
+            if (!IsEncrypted && File.Exists(fullPath))
             {
-                _loadQueue.Add(this);
+                // Resolve relative paths while the project load context is still active.
+                _ = Task.Run(() => LoadDetailsAsync(fullPath));
             }
             else
             {
@@ -552,21 +544,30 @@ public class GDrawable : INotifyPropertyChanged
         }
     }
 
-    public async Task LoadDetails()
+    public Task LoadDetails() => LoadDetailsAsync(FullFilePath);
+
+    private async Task LoadDetailsAsync(string filePath)
     {
         try
         {
-            if (File.Exists(FullFilePath))
+            await _detailsLoadGate.WaitAsync();
+            try
             {
-                var result = await LoadDrawableDetailsWithConcurrencyControl();
+                if (!File.Exists(filePath))
+                    return;
+
+                var result = await GetDrawableDetailsAsync(filePath);
                 if (result != null)
                 {
-                        // Keep replacement/rename/optimization state from the save file - the
-                        // freshly scanned details only know what is inside the .ydd itself.
-                        result.RestorePersistedEmbeddedState(_details);
-                        Details = result;
-                        OnPropertyChanged(nameof(Details));
+                    // Keep saved texture edits when reading the original YDD again.
+                    result.RestorePersistedEmbeddedState(_details);
+                    Details = result;
+                    OnPropertyChanged(nameof(Details));
                 }
+            }
+            finally
+            {
+                _detailsLoadGate.Release();
             }
         }
         catch (Exception ex)
@@ -576,25 +577,6 @@ public class GDrawable : INotifyPropertyChanged
         finally
         {
             IsLoading = false;
-        }
-    }
-
-    private static async void ProcessLoadQueue()
-    {
-        foreach (var drawable in _loadQueue.GetConsumingEnumerable())
-        {
-            try
-            {
-                await drawable.LoadDetails();
-            }
-            catch (Exception ex)
-            {
-                // Handle corrupted drawable files gracefully
-                Helpers.ErrorLogHelper.LogError($"Failed to load drawable details for {drawable.Name}: {ex.Message}", ex);
-                drawable.IsLoading = false;
-                
-                // Continue processing other drawables
-            }
         }
     }
 
@@ -748,20 +730,6 @@ public class GDrawable : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
     }
 
-    private async Task<GDrawableDetails?> LoadDrawableDetailsWithConcurrencyControl()
-    {
-        await _semaphore.WaitAsync();
-        try
-        {
-            return await GetDrawableDetailsAsync();
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-
     private static bool IsDrawableEncrypted(string filePath)
     {
         // RSC7 magic = 0x37435352 ("RSC7")
@@ -785,15 +753,15 @@ public class GDrawable : INotifyPropertyChanged
         return magic != MagicRsc7;
     }
 
-    private async Task<GDrawableDetails?> GetDrawableDetailsAsync()
+    private async Task<GDrawableDetails?> GetDrawableDetailsAsync(string filePath)
     {
-        if (IsDrawableEncrypted(FullFilePath))
+        if (IsDrawableEncrypted(filePath))
         {
             IsEncrypted = true;
             return null;
         }
 
-        var bytes = await File.ReadAllBytesAsync(FullFilePath);
+        var bytes = await File.ReadAllBytesAsync(filePath);
 
         var yddFile = new YddFile();
         try
@@ -881,7 +849,7 @@ public class GDrawable : INotifyPropertyChanged
                 _ => null
             };
 
-            details.EmbeddedTextures[txtType] = new GTextureEmbedded(texture, txtType.ToString(), FullFilePath);
+            details.EmbeddedTextures[txtType] = new GTextureEmbedded(texture, txtType.ToString(), filePath);
         }
 
         var drawableModels = yddFile.Drawables.First().DrawableModels;

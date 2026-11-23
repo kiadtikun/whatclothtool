@@ -9,8 +9,8 @@ using System.Runtime;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 using static mjxClothTool.Controls.CustomMessageBox;
-using Timer = System.Timers.Timer;
 
 namespace mjxClothTool.Helpers;
 
@@ -59,7 +59,7 @@ public class SaveBackupFile
         }
 
     public static string SavesPath { get; private set; }
-    private static Timer _timer;
+    private static DispatcherTimer _timer;
     public static event Action SaveCreated;
 
     public static event Action<double> AutoSaveProgress;
@@ -67,9 +67,11 @@ public class SaveBackupFile
     private static int _autoSaveInterval = 60000; // 60 seconds
     private static int _elapsedTime = 0;
 
-    private static SemaphoreSlim _semaphore = new(1);
+    private static readonly SemaphoreSlim _saveFileGate = new(1);
+    private static long _editRevision;
+    private static bool _autoSaveInProgress;
 
-    public static bool HasUnsavedChanges { get; set; }
+    public static bool HasUnsavedChanges { get; private set; }
     public static bool SavingPaused { get; set; }
 
    
@@ -88,21 +90,26 @@ public class SaveBackupFile
 
     public static void Init()
     {
-        _timer = new Timer(100);
-        _timer.Elapsed += OnAutoSaveTick;
+        _timer ??= new DispatcherTimer(TimeSpan.FromMilliseconds(100), DispatcherPriority.Background,
+            OnAutoSaveTick, MainWindow.Instance.Dispatcher);
         _timer.Start();
     }
+
+    public static void StopAutoSave() => _timer?.Stop();
 
     private static int _pausedWithChangesTime = 0;
     private static bool _pausedWarningLogged = false;
 
-    private static async void OnAutoSaveTick(object sender, System.Timers.ElapsedEventArgs e)
+    private static async void OnAutoSaveTick(object sender, EventArgs e)
     {
+        if (_autoSaveInProgress)
+            return;
+
         if (SavingPaused || !HasUnsavedChanges)
         {
             if (SavingPaused && HasUnsavedChanges)
             {
-                _pausedWithChangesTime += (int)_timer.Interval;
+                _pausedWithChangesTime += (int)_timer.Interval.TotalMilliseconds;
                 if (!_pausedWarningLogged && _pausedWithChangesTime >= _autoSaveInterval)
                 {
                     _pausedWarningLogged = true;
@@ -115,23 +122,35 @@ public class SaveBackupFile
                 _pausedWarningLogged = false;
             }
 
-            _elapsedTime = 0;
-            AutoSaveProgress?.Invoke(0);
-            RemainingSecondsChanged?.Invoke(0);
+            if (_elapsedTime > 0)
+            {
+                _elapsedTime = 0;
+                AutoSaveProgress?.Invoke(0);
+                RemainingSecondsChanged?.Invoke(0);
+            }
             return;
         }
 
         _pausedWithChangesTime = 0;
         _pausedWarningLogged = false;
 
-        _elapsedTime += (int)_timer.Interval;
+        _elapsedTime += (int)_timer.Interval.TotalMilliseconds;
         double percentage = ((double)_elapsedTime / _autoSaveInterval) * 75.0;
         int remainingSeconds = Math.Max(0, (_autoSaveInterval - _elapsedTime) / 1000);
         
         if (_elapsedTime >= _autoSaveInterval)
         {
-            await SaveAsync();
             _elapsedTime = 0;
+            _autoSaveInProgress = true;
+            try
+            {
+                await SaveAsync();
+            }
+            finally
+            {
+                _autoSaveInProgress = false;
+            }
+            AutoSaveProgress?.Invoke(0);
             RemainingSecondsChanged?.Invoke(0);
             return;
         }
@@ -141,12 +160,16 @@ public class SaveBackupFile
 
     public static async Task SaveAsync()
     {
+        MainWindow.Instance.Dispatcher.VerifyAccess();
         if (!HasUnsavedChanges || SavingPaused) return;
 
-        await _semaphore.WaitAsync();
+        await _saveFileGate.WaitAsync();
 
         try
         {
+            // A queued manual save may already have been satisfied by the previous write.
+            if (!HasUnsavedChanges || SavingPaused) return;
+
             var timer = new Stopwatch();
             timer.Start();
             LogHelper.Log("Started saving...");
@@ -154,8 +177,9 @@ public class SaveBackupFile
             try
             {
                 var mainProjectsFolder = PersistentSettingsHelper.Instance.MainProjectsFolder;
-                var projectName = MainWindow.AddonManager.ProjectName;
-                var isExternalProject = MainWindow.AddonManager.IsExternalProject;
+                var project = MainWindow.AddonManager;
+                var projectName = project.ProjectName;
+                var isExternalProject = project.IsExternalProject;
 
                 if (string.IsNullOrEmpty(mainProjectsFolder) ||
                     string.IsNullOrEmpty(projectName) ||
@@ -166,16 +190,16 @@ public class SaveBackupFile
                 }
 
                 var projectFolder = Path.Combine(mainProjectsFolder, projectName);
-                Directory.CreateDirectory(projectFolder);
-
                 var saveFileName = GetSaveFileName(isExternalProject);
                 var autoSavePath = Path.Combine(projectFolder, saveFileName);
-                await RotateSaveBackupAsync(autoSavePath);
-                await WriteSaveFileAtomicallyAsync(autoSavePath);
+                var savedRevision = _editRevision;
+                await WriteSaveFileAtomicallyAsync(project, autoSavePath);
 
                 LogHelper.Log($"Auto-saved to {autoSavePath} in {timer.ElapsedMilliseconds}ms");
+                if (_editRevision == savedRevision)
+                    SetUnsavedChanges(false);
+
                 SaveCreated?.Invoke();
-                SetUnsavedChanges(false);
             }
             catch (Exception ex)
             {
@@ -184,16 +208,16 @@ public class SaveBackupFile
         }
         finally
         {
-            _semaphore.Release();
+            _saveFileGate.Release();
         }
     }
 
     public static void SetUnsavedChanges(bool status)
     {
-        HasUnsavedChanges = status;
-
         MainWindow.Instance.Dispatcher.Invoke(() =>
         {
+            _editRevision++;
+            HasUnsavedChanges = status;
             string unsavedText = " (Unsaved changes)";
             bool titleContainsUnsaved = MainWindow.Instance.Title.Contains(unsavedText);
 
@@ -226,6 +250,20 @@ public class SaveBackupFile
 
 
     public static async Task LoadSaveFileAsync(string filePath)
+    {
+        MainWindow.Instance.Dispatcher.VerifyAccess();
+        await _saveFileGate.WaitAsync();
+        try
+        {
+            await LoadSaveFileWithBackupsAsync(filePath);
+        }
+        finally
+        {
+            _saveFileGate.Release();
+        }
+    }
+
+    private static async Task LoadSaveFileWithBackupsAsync(string filePath)
     {
         try
         {
@@ -291,7 +329,8 @@ public class SaveBackupFile
     {
         try
         {
-            FileHelper.SetLoadContext(filePath);
+            var projectSavePath = recentProjectFilePath ?? filePath;
+            FileHelper.SetLoadContext(projectSavePath);
 
             AddonManager addonManager;
             await using (var stream = File.OpenRead(filePath))
@@ -301,7 +340,7 @@ public class SaveBackupFile
                     ?? throw new InvalidOperationException("Failed to deserialize save file.");
             }
 
-            var fileName = Path.GetFileName(filePath);
+            var fileName = Path.GetFileName(projectSavePath);
             var isExternalFromFileName = fileName.Equals(AutoSaveExternalFileName, StringComparison.OrdinalIgnoreCase);
             
             var isExternalProject = addonManager.IsExternalProject || isExternalFromFileName;
@@ -349,6 +388,7 @@ public class SaveBackupFile
                 }
             }
 
+            SetUnsavedChanges(false);
             int drawableCount = addonManager.Addons.Sum(a => a.Drawables.Count);
             int addonCount = addonManager.Addons.Count;
 
@@ -408,7 +448,7 @@ public class SaveBackupFile
         }
     }
 
-    private static async Task RotateSaveBackupAsync(string saveFilePath)
+    private static void RotateSaveBackup(string saveFilePath)
     {
         if (!File.Exists(saveFilePath))
         {
@@ -425,7 +465,7 @@ public class SaveBackupFile
             var backupPath = Path.Combine(backupFolder, backupFileName);
 
             File.Copy(saveFilePath, backupPath, overwrite: false);
-            await Task.Run(() => PruneOldBackups(saveFilePath));
+            PruneOldBackups(saveFilePath);
         }
         catch (Exception ex)
         {
@@ -433,50 +473,40 @@ public class SaveBackupFile
         }
     }
 
-    private static async Task WriteSaveFileAtomicallyAsync(string saveFilePath)
+    internal static Task WriteSaveFileAtomicallyAsync(AddonManager project, string saveFilePath)
     {
-        var projectFolder = Path.GetDirectoryName(saveFilePath) ?? throw new InvalidOperationException("Save file has no parent folder.");
-        var tempPath = Path.Combine(projectFolder, $"{Path.GetFileName(saveFilePath)}.{Guid.NewGuid():N}.tmp");
-
-        try
+        // Capture the mutable project on the dispatcher, then let the disk work run in the background.
+        var snapshot = JsonSerializer.SerializeToUtf8Bytes(project, SerializerOptions);
+        return Task.Run(async () =>
         {
-            // Serialize straight to the temp file instead of building a multi-MB string first.
-            using (var stream = File.Create(tempPath))
-            {
-                lock (AddonManager.AddonsLock)
-                {
-                    MainWindow.AddonManager.Groups.Clear();
-                    foreach (var group in GroupManager.Instance.Groups)
-                    {
-                        MainWindow.AddonManager.Groups.Add(group);
-                    }
+            var projectFolder = Path.GetDirectoryName(saveFilePath) ?? throw new InvalidOperationException("Save file has no parent folder.");
+            var tempPath = Path.Combine(projectFolder, $"{Path.GetFileName(saveFilePath)}.{Guid.NewGuid():N}.tmp");
 
-                    JsonSerializer.Serialize(stream, MainWindow.AddonManager, SerializerOptions);
+            try
+            {
+                Directory.CreateDirectory(projectFolder);
+                await File.WriteAllBytesAsync(tempPath, snapshot);
+                await using (var validationStream = File.OpenRead(tempPath))
+                {
+                    using var _ = await JsonDocument.ParseAsync(validationStream);
+                }
+
+                RotateSaveBackup(saveFilePath);
+                if (File.Exists(saveFilePath))
+                {
+                    File.Replace(tempPath, saveFilePath, null);
+                }
+                else
+                {
+                    File.Move(tempPath, saveFilePath);
                 }
             }
-
-            
-            await using (var validationStream = File.OpenRead(tempPath))
+            finally
             {
-                using var _ = await JsonDocument.ParseAsync(validationStream);
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
             }
-
-            if (File.Exists(saveFilePath))
-            {
-                File.Replace(tempPath, saveFilePath, null);
-            }
-            else
-            {
-                File.Move(tempPath, saveFilePath);
-            }
-        }
-        finally
-        {
-            if (File.Exists(tempPath))
-            {
-                File.Delete(tempPath);
-            }
-        }
+        });
     }
 
     public static List<SaveBackupFile> GetBackupSaveFiles(string saveFilePath)
@@ -489,7 +519,9 @@ public class SaveBackupFile
 
         var saveName = Path.GetFileNameWithoutExtension(saveFilePath);
         return Directory
-            .GetFiles(backupFolder, $"{saveName}.*.json")
+            .EnumerateFiles(backupFolder, $"{saveName}.*.json")
+            .Where(path => string.Equals(Path.GetFileNameWithoutExtension(Path.GetFileNameWithoutExtension(path)),
+                saveName, StringComparison.OrdinalIgnoreCase))
             .Select(path => new SaveBackupFile
             {
                 FilePath = path,

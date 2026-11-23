@@ -6,7 +6,6 @@ using mjxClothTool.Helpers;
 using mjxClothTool.Models.Drawable;
 using mjxClothTool.Models.Other;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
@@ -37,7 +36,6 @@ namespace mjxClothTool.Models
 
     public class AddonManager : INotifyPropertyChanged
     {
-        private abstract record WorkItem;
         private record DrawableWorkItem(
             string FilePath,
             Enums.SexType Sex,
@@ -49,11 +47,9 @@ namespace mjxClothTool.Models
             Dictionary<(int, bool), int> TypeNumericCounts,
             bool IsProp,
             int DrawableType
-        ) : WorkItem;
-        private record CompletionMarker(TaskCompletionSource Tcs) : WorkItem;
+        );
 
-        private readonly BlockingCollection<WorkItem> _drawableQueue = new();
-        private readonly Task _drawableProcessingTask;
+        private readonly SemaphoreSlim _drawableImportGate = new(1);
 
         public static readonly object AddonsLock = new();
 
@@ -128,7 +124,6 @@ namespace mjxClothTool.Models
         public AddonManager()
         {
             StartObservingAddons();
-            _drawableProcessingTask = Task.Run(ProcessDrawableQueue);
         }
 
         private void StartObservingAddons()
@@ -343,7 +338,7 @@ namespace mjxClothTool.Models
             Dictionary<string, (bool IsProp, int DrawableType)> resolvedDrawableTypes = null)
         {
             resolvedDrawableTypes ??= await FileHelper.ResolveDrawableTypes(filePaths);
-            var tcs = new TaskCompletionSource();
+            var items = new List<DrawableWorkItem>(filePaths.Length);
 
             // We need to count how many drawables of each type we have added so far
             // this is because if we are loading from ymt file, numbers are relative to this ymt file, once adding it to existing project
@@ -383,7 +378,7 @@ namespace mjxClothTool.Models
                     continue;
                 }
 
-                var workItem = new DrawableWorkItem(
+                items.Add(new DrawableWorkItem(
                     filePath,
                     sex,
                     basePath,
@@ -394,48 +389,31 @@ namespace mjxClothTool.Models
                     typeNumericCounts,
                     resolvedDrawableType.IsProp,
                     resolvedDrawableType.DrawableType
-                );
-                _drawableQueue.Add(workItem);
+                ));
             }
 
-            _drawableQueue.Add(new CompletionMarker(tcs));
-            await tcs.Task;
-        }
+            if (items.Count == 0)
+                return;
 
-        private async void ProcessDrawableQueue()
-        {
-            var pendingItems = new List<DrawableWorkItem>();
-
-            foreach (var workItem in _drawableQueue.GetConsumingEnumerable())
+            // Keep each import together since its metadata and texture cache belong to that batch.
+            await _drawableImportGate.WaitAsync();
+            try
             {
-                if (workItem is CompletionMarker marker)
-                {
-                    try
-                    {
-                        if (pendingItems.Count > 0)
-                        {
-                            await ProcessWorkItemBatch(pendingItems);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogHelper.Log($"Error while processing drawable batch: {ex.Message}", Views.LogType.Error);
-                    }
-                    finally
-                    {
-                        pendingItems.Clear();
-                        FileHelper.ClearTextureSearchCache();
-                        marker.Tcs.SetResult();
-                    }
-                    continue;
-                }
-
-                pendingItems.Add((DrawableWorkItem)workItem);
+                await Task.Run(() => ProcessWorkItemBatch(items));
+            }
+            catch (Exception ex)
+            {
+                LogHelper.Log($"Error while processing drawable batch: {ex.Message}", Views.LogType.Error);
+            }
+            finally
+            {
+                FileHelper.ClearTextureSearchCache();
+                _drawableImportGate.Release();
             }
         }
 
         /// <summary>
-        /// Processes one batch of queued work items (everything between two completion markers).
+        /// Processes one batch of files from a single import request.
         /// Base drawables are created in parallel (reserved checks, texture matching and file
         /// copies are all I/O bound), while order-sensitive steps (ymt metadata, first person /
         /// cloth physics linking, numbering) run sequentially afterwards.

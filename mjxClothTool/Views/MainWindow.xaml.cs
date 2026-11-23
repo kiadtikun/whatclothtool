@@ -598,6 +598,7 @@ namespace mjxClothTool
         // if main window is closed, close CW window too
         private void Window_Closed(object sender, System.EventArgs e)
         {
+            SaveHelper.StopAutoSave();
             PreviewHost?.ClosePreview();
             LogHelper.Close();
         }
