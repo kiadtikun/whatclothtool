@@ -10,6 +10,42 @@ namespace mjxClothTool.UnitTests.Models;
 public class DrawableTypeChangeTests
 {
     [Fact]
+    public void ReplacingDrawableWithReservedKeepsOriginalGroupAndOrder()
+    {
+        using var temp = new TestTempDirectory();
+        var reservedPath = typeof(FileHelper).GetProperty(nameof(FileHelper.ReservedAssetsPath))!.GetSetMethod(true)!;
+        var previousPath = FileHelper.ReservedAssetsPath;
+        reservedPath.Invoke(null, [temp.Path]);
+        try
+        {
+            var manager = new AddonManager();
+            var addon = new Addon("Addon 1");
+            manager.Addons.Add(addon);
+            var drawable = new GDrawable(Guid.NewGuid(), temp.FilePath("jbib_009_u.ydd"),
+                SexType.female, false, (int)ComponentNumbers.jbib, 9, false, [])
+            {
+                Group = "Custom jackets",
+                Order = 12
+            };
+            addon.Drawables.Add(drawable);
+
+            manager.ReplaceDrawablesWithReserved(addon, [drawable]);
+
+            var reserved = Assert.Single(addon.Drawables);
+            Assert.True(reserved.IsReserved);
+            Assert.Equal("Custom jackets", reserved.Group);
+            Assert.Equal(12, reserved.Order);
+            Assert.Equal("jbib", reserved.TypeName);
+            Assert.Equal(9, reserved.Number);
+            Assert.Equal(SexType.female, reserved.Sex);
+        }
+        finally
+        {
+            reservedPath.Invoke(null, [previousPath]);
+        }
+    }
+
+    [Fact]
     public void ChangingGenderAndTypeTogetherReservesOnlyTheOriginalSlot()
     {
         using var temp = new TestTempDirectory();

@@ -465,14 +465,7 @@ namespace mjxClothTool.Views
 
         private void ReplaceDrawables(List<GDrawable> drawables)
         {
-            foreach(var drawable in drawables)
-            {
-                var reserved = new GDrawableReserved(drawable.Sex, drawable.IsProp, drawable.TypeNumeric, drawable.Number);
-                DuplicateDetector.UnregisterDrawable(drawable);
-
-                //replace drawable with reserved in the same place
-                Addon.Drawables[Addon.Drawables.IndexOf(drawable)] = reserved;
-            }
+            MainWindow.AddonManager.ReplaceDrawablesWithReserved(Addon, drawables);
             SaveHelper.SetUnsavedChanges(true);
         }
 

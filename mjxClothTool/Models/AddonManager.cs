@@ -1032,6 +1032,30 @@ namespace mjxClothTool.Models
             }
         }
 
+        public void ReplaceDrawablesWithReserved(Addon source, IEnumerable<GDrawable> drawables)
+        {
+            lock (AddonsLock)
+            {
+                if (!Addons.Contains(source))
+                    throw new ArgumentException("The source addon is no longer in the project.", nameof(source));
+
+                var replacements = drawables.Select(drawable => (Drawable: drawable, Index: source.Drawables.IndexOf(drawable))).ToList();
+                if (replacements.Any(replacement => replacement.Index < 0))
+                    throw new ArgumentException("A selected drawable is no longer in the addon.", nameof(drawables));
+
+                foreach (var (drawable, index) in replacements)
+                {
+                    var reserved = new GDrawableReserved(drawable.Sex, drawable.IsProp, drawable.TypeNumeric, drawable.Number)
+                    {
+                        Group = string.IsNullOrWhiteSpace(drawable.Group) ? drawable.TypeName : drawable.Group,
+                        Order = drawable.Order
+                    };
+                    DuplicateDetector.UnregisterDrawable(drawable);
+                    source.Drawables[index] = reserved;
+                }
+            }
+        }
+
         public void DeleteDrawables(List<GDrawable> drawables)
         {
             SaveHelper.SetUnsavedChanges(true);
